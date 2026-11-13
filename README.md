@@ -158,14 +158,14 @@ what is missing, known issues, measured performance and a prioritised roadmap.
 
 ## Roadmap
 
-- [ ] Block **attributes** (`AttributeCollection` → tag/value) — the usual core of a BOM
-- [ ] `Polyline2d` / `Polyline3d`, `Line`, `Arc`, `Circle`, `Table`, `MText`
-- [ ] Paper space, nested blocks and xref resolution
-- [ ] XData / Xrecords / extension dictionaries
-- [ ] JSON and SQLite output alongside CSV
-- [ ] Parallel workers + per-drawing timeout (one hung DWG currently stalls the queue)
-- [ ] AutoCAD Architecture / MEP / Civil 3D objects (needs the vertical SDK + Object Enablers)
-- [ ] `.bundle` packaging and signing
+Prioritised plan, horizons and the decisions still blocking work are in
+**[docs/roadmap.md](docs/roadmap.md)**. The short version:
+
+1. **Block attributes** — turns rows into a real BOM
+2. **Per-drawing timeout** — a hung DWG currently stalls the batch
+3. **Parallel workers** — serial is ~1–2 s per drawing
+4. **Entity coverage** — `Polyline2d/3d`, `Line`, `Arc`, `Table`, `MText`
+5. **Paper space, nested blocks, xrefs** — needed before numbers are trustworthy
 
 ## License
 

@@ -166,7 +166,7 @@ Everything below was measured, not assumed.
 
 ## 6. Recommended next steps
 
-Ordered by value per unit of effort:
+Ordered by value per unit of effort (full detail in [roadmap.md](roadmap.md)):
 
 1. **Block attributes** — `BlockReference.AttributeCollection` → `AttributeReference.Tag` /
    `TextString`. This is what makes the output a real BOM. Small change, large payoff.
