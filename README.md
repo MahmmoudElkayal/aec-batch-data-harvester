@@ -145,12 +145,16 @@ Input_DWGs/                             drop drawings here        (git-ignored)
 Output/                                 CSV + status files        (git-ignored)
 Logs/                                   per-drawing logs          (git-ignored)
 docs/autocad-2026/                      study of the ObjectARX 2026 documentation set
+docs/capabilities.md                    measured capability report + known issues
 tools/build-docs-index.ps1              regenerates the documentation indexes
 ```
 
 `docs/autocad-2026/README.md` is a full map of the AutoCAD 2026 / ObjectARX documentation:
 45,844 pages indexed, 29 managed namespaces → 18,925 reference pages, plus platform and
 execution-host constraints.
+
+[`docs/capabilities.md`](docs/capabilities.md) is the honest status report: what is verified,
+what is missing, known issues, measured performance and a prioritised roadmap.
 
 ## Roadmap
 
