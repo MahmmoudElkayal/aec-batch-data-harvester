@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!--
+      AutoCAD 2026 Update 1.2+ (build 25.1.179 and later, which is what is installed here) runs on .NET 10.
+      The -windows suffix is required for the desktop APIs an AutoCAD plug-in typically uses.
+    -->
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<PlatformTarget>x64</PlatformTarget>
+		<!-- This variable replaces the dangerous relative paths -->
+		<AcadDir Condition="'$(AcadDir)' == ''">C:\Program Files\Autodesk\AutoCAD 2026\</AcadDir>
+		<RootNamespace>AEC_Batch_Data_Haravester</RootNamespace>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Reference Include="accoremgd">
+			<HintPath>$(AcadDir)accoremgd.dll</HintPath>
+			<!-- Critical: Prevents the DLL from copying to your bin folder and crashing AutoCAD -->
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="acdbmgd">
+			<HintPath>$(AcadDir)acdbmgd.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="acmgd">
+			<HintPath>$(AcadDir)acmgd.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
+	</ItemGroup>
+
+</Project>
