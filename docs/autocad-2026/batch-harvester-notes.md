@@ -3,6 +3,16 @@
 Working notes derived from the AutoCAD 2026 ObjectARX documentation
 (see `README.md` in this folder for the full map).
 
+## 0. Confirmed environment (checked on this machine)
+
+- AutoCAD 2026 – English, `ACAD-9101:409`, Release **25.1**, binaries **25.1.179.0.0**
+- `acdbmgd.runtimeconfig.json` targets **net10.0** → installed build is **2026 Update 1.2+**
+- `accoreconsole.exe` present in `C:\Program Files\Autodesk\AutoCAD 2026`
+- Architecture Object Enablers (`AecArchXOE.dll`, `AecADTUPI_OE.dll`) ship with plain AutoCAD,
+  but the **managed AEC API is not installed** (`AecBaseMgd.dll`, `AecArchMgd.dll`, `AeccDbMgd.dll` absent)
+- ObjectARX SDK not installed → either install it (for `inc`, `lib`, samples, docs CHM) or reference
+  `AcCoreMgd.dll` / `AcDbMgd.dll` / `AcMgd.dll` straight from the AutoCAD install folder
+
 ## 1. What the API gives us for "harvest data from many DWGs"
 
 | Capability | API |

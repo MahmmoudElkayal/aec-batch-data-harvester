@@ -107,8 +107,20 @@ Managed .NET Developer's Guide section map (page counts):
 | 2025 | 25.0 | .NET 8.0 |
 | 2024 and earlier | 24.3 and lower | .NET Framework 4.8 / 4.x |
 
-Our `AEC_Batch_Data_ Haravester.csproj` already targets `net10.0`, so it requires
-AutoCAD 2026.1.2+ unless we multi-target `net8.0;net10.0`.
+**Confirmed local environment (this machine):**
+
+| Item | Value |
+|---|---|
+| Installed product | AutoCAD 2026 – English (`ACAD-9101:409`), Release 25.1 |
+| `acad.exe` / `AcCoreMgd.dll` / `AcDbMgd.dll` / `AcMgd.dll` | **25.1.179.0.0** |
+| Runtime | `acdbmgd.runtimeconfig.json` → `"tfm": "net10.0"`, `Microsoft.NETCore.App 10.0.0` |
+| Core Console | `C:\Program Files\Autodesk\AutoCAD 2026\accoreconsole.exe` present |
+| Architecture Object Enablers | shipped in the install (`AecArchXOE.dll`, `AecADTUPI_OE.dll`) |
+| Managed AEC API (`AecBaseMgd.dll`, `AecArchMgd.dll`, `AeccDbMgd.dll`) | **not present** |
+| ObjectARX SDK (`inc`, `lib`, samples) | not found on disk — reference DLLs from the install folder or install the SDK |
+
+Because the installed build resolves to .NET 10, it is **2026 Update 1.2 or later**, so our
+`net10.0` target is correct; no `net8.0` multi-targeting is needed.
 Source: [Exercise: Set the Target Framework and OS](https://help.autodesk.com/view/OARX/2026/ENU/?guid=GUID-E4C5C858-787F-4D35-B7FC-1F2CBA3D4966),
 [.NET 8 to .NET 10 Project Migration](https://help.autodesk.com/view/OARX/2026/ENU/?guid=GUID-8564A04F-527D-4BB3-8B31-B90D6E24AF08)
 
