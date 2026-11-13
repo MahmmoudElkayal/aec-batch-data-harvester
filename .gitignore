@@ -493,3 +493,8 @@ docs/autocad-2026/objectarx-toc.csv
 *.dbx
 *.arx
 *.crx
+
+# Harvest run artifacts
+/Output/
+/Logs/
+/Input_DWGs/
