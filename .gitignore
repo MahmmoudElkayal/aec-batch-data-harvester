@@ -498,3 +498,6 @@ docs/autocad-2026/objectarx-toc.csv
 /Output/
 /Logs/
 /Input_DWGs/
+
+# Generated on every run, with a timestamp and an absolute NETLOAD path
+/Scripts/RunExtraction.scr
