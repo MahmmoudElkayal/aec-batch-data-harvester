@@ -34,7 +34,7 @@ namespace Harvest.Checks
             GuardChecks();
             StatusJsonChecks();
             CsvFormatChecks();
-            FileNameChecks();
+            KeyChecks();
             SchemaChecks();
 
             Console.WriteLine();
@@ -174,25 +174,53 @@ namespace Harvest.Checks
                 ?? Expect(CsvFormatter.Number(1234.5678) == "1234.568", "rounding"));
         }
 
-        // ------------------------------------------------------------- file names
+        // ------------------------------------------------------------- status keys
 
-        private static void FileNameChecks()
+        private static void KeyChecks()
         {
-            Section("status keys");
+            Section("status key");
 
-            Check("illegal characters are replaced", () =>
+            Check("the key is read from the environment verbatim", () =>
             {
-                string cleaned = FileNames.Sanitize("a<b>c:d|e");
-                bool invalidLeft = cleaned.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0;
-
-                return Expect(!invalidLeft, "illegal character survived: " + cleaned)
-                    ?? Expect(FileNames.Sanitize("   ") == "drawing", "empty name fallback");
+                return WithKey("0007-Plan-3fa11b4c", () =>
+                {
+                    HarvestOptions options = HarvestOptions.FromEnvironment();
+                    return Expect(options.Key == "0007-Plan-3fa11b4c",
+                        "key changed: " + options.Key);
+                });
             });
 
-            Check("the key drops the extension and the folder", () =>
-                Expect(FileNames.StatusKey(@"C:\Folder A\House Designer.dwg") == "House Designer",
-                    "key derivation")
-                ?? Expect(FileNames.StatusKey("Plan.dwg") == "Plan", "bare name"));
+            Check("a missing key fails instead of falling back to the file name", () =>
+            {
+                return WithKey(null, () =>
+                {
+                    Throws<InvalidOperationException>(() => HarvestOptions.FromEnvironment());
+                    return null;
+                });
+            });
+
+            Check("a blank key fails too", () =>
+            {
+                return WithKey("   ", () =>
+                {
+                    Throws<InvalidOperationException>(() => HarvestOptions.FromEnvironment());
+                    return null;
+                });
+            });
+        }
+
+        private static string? WithKey(string? value, Func<string?> body)
+        {
+            string? previous = Environment.GetEnvironmentVariable(HarvestOptions.KeyVariable);
+            try
+            {
+                Environment.SetEnvironmentVariable(HarvestOptions.KeyVariable, value);
+                return body();
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(HarvestOptions.KeyVariable, previous);
+            }
         }
 
         // ----------------------------------------------------------------- schema

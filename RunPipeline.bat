@@ -7,12 +7,19 @@ REM
 REM  Runs AutoCAD Core Console once per DWG in Input_DWGs, loading
 REM  AEC_Batch_Data_Haravester.dll and calling the Extract_BOM command.
 REM
+REM  Each drawing writes its own file, Output\_rows\<key>.csv, temp-then-rename.
+REM  The merged Output\Extracted_BOM.csv is built from those files at the end.
+REM  The supervisor owns the key (tools\build-manifest.ps1) and the plugin uses
+REM  it verbatim, so both halves agree on which files belong to which drawing.
+REM
 REM  Usage (flags can be combined):
 REM     RunPipeline.bat              harvest every DWG directly in Input_DWGs
 REM     RunPipeline.bat /r           ... including sub-folders
-REM     RunPipeline.bat /append      keep the existing CSV instead of resetting it
+REM     RunPipeline.bat /append      keep existing per-drawing files and merge them
 REM     RunPipeline.bat /new         rebuild the DLL first
 REM     RunPipeline.bat /q           do not pause at the end
+REM
+REM  Exit codes: 0 = every drawing succeeded, 2 = at least one failed, 1 = aborted.
 REM ===========================================================================
 
 set "ROOT=%~dp0"
@@ -26,17 +33,22 @@ set "LOGS=%ROOT%\Logs"
 set "SCRIPTS=%ROOT%\Scripts"
 set "SCRIPT=%SCRIPTS%\RunExtraction.scr"
 set "CSV=%OUTPUT%\Extracted_BOM.csv"
+set "MANIFEST=%OUTPUT%\manifest.txt"
+set "ROWS=%OUTPUT%\_rows"
+set "STATUSDIR=%OUTPUT%\_status"
 set "DLLNAME=AEC_Batch_Data_Haravester.dll"
 
 title AEC Batch Data Harvester
 
 REM ---------------------------------------------------------------- arguments
 set "RECURSE="
+set "RECURSE_ARG="
 set "FRESH=1"
 set "BUILD="
 set "NOPAUSE="
 for %%A in (%*) do (
     if /i "%%~A"=="/r"      set "RECURSE=/s"
+    if /i "%%~A"=="/r"      set "RECURSE_ARG=-Recurse"
     if /i "%%~A"=="/append" set "FRESH="
     if /i "%%~A"=="/new"    set "BUILD=1"
     if /i "%%~A"=="/q"      set "NOPAUSE=1"
@@ -105,8 +117,12 @@ REM at the invocation below.
     echo Extract_BOM
 ) > "%SCRIPT%"
 
+REM A fresh run replaces results; /append keeps the per-drawing files so a second input
+REM folder can be merged into the same CSV. The status folder is always cleared: a stale
+REM verdict next to a fresh run would be worse than no verdict.
 if defined FRESH if exist "%CSV%" del /q "%CSV%"
-if exist "%OUTPUT%\_status" rd /s /q "%OUTPUT%\_status"
+if defined FRESH if exist "%ROWS%" rd /s /q "%ROWS%"
+if exist "%STATUSDIR%" rd /s /q "%STATUSDIR%"
 
 REM The assembly reads these; nothing about output location is hardcoded in C#.
 set "AEC_HARVEST_OUTPUT=%OUTPUT%"
@@ -118,33 +134,48 @@ set /a OK=0
 set /a FAILED=0
 set /a NORESULT=0
 
+REM The supervisor owns the status key. One line per drawing: key|full path.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\tools\build-manifest.ps1" -Root "%ROOT%" -Destination "%MANIFEST%" %RECURSE_ARG%
+if errorlevel 1 (
+    echo [FATAL] Could not build the manifest.
+    goto :fail
+)
+
 echo.
 echo Console : %CONSOLE%
 echo Assembly: %DLL%
 echo Input   : %INPUT%%RECURSE%
 echo Output  : %CSV%
-if defined FRESH (echo Mode    : fresh CSV) else (echo Mode    : append to existing CSV)
+echo Rows    : %ROWS%
+if defined FRESH (echo Mode    : fresh - per-drawing files reset) else (echo Mode    : append - existing per-drawing files kept)
 echo ---------------------------------------------------------------------------
 
 REM ------------------------------------------------------------------ the loop
-pushd "%INPUT%"
-for /f "delims=" %%F in ('dir /b /a-d %RECURSE% *.dwg 2^>nul') do call :Harvest "%%~fF"
-popd
+for /f "usebackq tokens=1,2 delims=|" %%L in ("%MANIFEST%") do call :Harvest "%%L" "%%M"
 
 echo ---------------------------------------------------------------------------
 echo DWGs processed : %TOTAL%
 echo Succeeded      : %OK%
 echo Failed         : %FAILED%
 
+if %TOTAL%==0 (
+    echo [WARN] No .dwg files found in "%INPUT%" - drop some test drawings in there.
+    goto :summary
+)
+
+REM Only completed per-drawing files are merged: a .tmp is not data yet.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\tools\merge-rows.ps1" -Root "%ROOT%"
+if errorlevel 1 (
+    echo [FATAL] Merge failed.
+    goto :fail
+)
+
+:summary
 if exist "%CSV%" (
     for /f %%N in ('find /c /v "" ^< "%CSV%"') do echo CSV lines      : %%N
     echo CSV file       : %CSV%
 ) else (
     echo [WARN] No CSV was produced.
-)
-
-if %TOTAL%==0 (
-    echo [WARN] No .dwg files found in "%INPUT%" - drop some test drawings in there.
 )
 
 if %FAILED% GTR 0 (
@@ -163,45 +194,72 @@ exit /b 0
 
 REM ===========================================================================
 :Harvest
-REM %~1 = full path to one DWG
-set "FILE=%~1"
+REM %~1 = status key (from the manifest), %~2 = full path to one DWG
+set "KEY=%~1"
+set "FILE=%~2"
 set /a TOTAL+=1
 
-echo [%TIME:~0,8%] %~nx1
+REM A drawing name may contain & < > or ^, all of which are shell operators. The status
+REM line is cosmetic, so strip them rather than let a file name break the batch.
+set "SAFE=%KEY%"
+set "SAFE=%SAFE:&=+%"
+set "SAFE=%SAFE:<=%"
+set "SAFE=%SAFE:>=%"
+set "SAFE=%SAFE:^=+%"
+
+echo [%TIME:~0,8%] %SAFE%
+
+set "AEC_HARVEST_KEY=%KEY%"
+
 REM stdin comes from NUL: the generated script has no trailing blank line (a blank
 REM line is an ENTER at the Command prompt and would repeat Extract_BOM), so Core
 REM Console needs EOF to know the script is finished.
-"%CONSOLE%" /i "%FILE%" /s "%SCRIPT%" /l en-US /readonly < nul > "%LOGS%\%~n1.log" 2>&1
+"%CONSOLE%" /i "%FILE%" /s "%SCRIPT%" /l en-US /readonly < nul > "%LOGS%\%KEY%.log" 2>&1
 
 REM accoreconsole's own exit code is not reliable (and it swallows managed stdout),
-REM so the assembly writes <Output>\_status\<drawing>.ok or .fail. Trust that.
+REM so the assembly writes Output\_status\<key>.ok or .fail. Trust that.
 REM Absence of BOTH is also a failure: a drawing that cannot be opened never reaches
 REM the command, so it writes nothing at all. That is the corrupt-file case.
-set "STATUS=%OUTPUT%\_status\%~n1.ok"
-set "FAILDOC=%OUTPUT%\_status\%~n1.fail"
-set "ROWSFILE=%OUTPUT%\_status\%~n1.rows"
+set "OKFILE=%STATUSDIR%\%KEY%.ok"
+set "FAILFILE=%STATUSDIR%\%KEY%.fail"
+set "ROWSFILE=%STATUSDIR%\%KEY%.rows"
 
-if exist "%STATUS%" goto :HarvestOk
-if exist "%FAILDOC%" goto :HarvestFail
+if exist "%OKFILE%" goto :HarvestOk
+if exist "%FAILFILE%" goto :HarvestFail
 
 set /a FAILED+=1
 set /a NORESULT+=1
 echo   FAIL  - no status file. The drawing probably did not open.
+REM A failure before the key exists (missing AEC_HARVEST_KEY, unusable output folder)
+REM cannot name a status file, so the plugin leaves a fixed-name diagnostic instead.
+REM Core Console discards managed stdout/stderr, so this file is the only place the
+REM real reason survives.
+if exist "%STATUSDIR%\_harvest.error.txt" (
+    echo   Reason:
+    type "%STATUSDIR%\_harvest.error.txt"
+)
 exit /b 0
 
 :HarvestOk
+if not exist "%ROWS%\%KEY%.csv" goto :HarvestNoRows
 set /a OK+=1
 REM Row count comes from a digits-only file, so it can be echoed without the
-REM escaping hazards of echoing arbitrary text (a drawing name may contain & or <).
+REM escaping hazards of echoing arbitrary text.
 set "ROWCOUNT="
 if exist "%ROWSFILE%" for /f "delims=" %%N in ('type "%ROWSFILE%"') do set "ROWCOUNT=%%N"
 if defined ROWCOUNT echo   OK    - %ROWCOUNT% rows
 if not defined ROWCOUNT echo   OK
 exit /b 0
 
+:HarvestNoRows
+REM Success reported, but nothing to merge: the two disagree, so neither is trusted.
+set /a FAILED+=1
+echo   FAIL  - reported success but wrote no row file. The merge would silently skip it.
+exit /b 0
+
 :HarvestFail
 set /a FAILED+=1
-echo   FAIL  - reported failure. Details: "%OUTPUT%\_status\%~n1.error.txt"
+echo   FAIL  - reported failure. Details: "%STATUSDIR%\%KEY%.error.txt"
 exit /b 0
 
 REM ===========================================================================
@@ -210,7 +268,7 @@ echo.
 echo RunPipeline.bat  -  batch DWG data harvest
 echo.
 echo   /r        include sub-folders of Input_DWGs
-echo   /append   keep the existing CSV instead of resetting it
+echo   /append   keep existing per-drawing files and merge them into the CSV
 echo   /new      rebuild the DLL before harvesting
 echo   /q        do not pause at the end
 echo.

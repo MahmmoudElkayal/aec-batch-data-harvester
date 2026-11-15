@@ -31,7 +31,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 Database? db = HostApplicationServices.WorkingDatabase;
                 if (db is null)
                 {
-                    options = HarvestOptions.FromEnvironment(drawingName);
+                    options = HarvestOptions.FromEnvironment();
                     new FileStatusReporter(options).Failure(
                         drawingName, "no working database - is a drawing loaded?", null,
                         stopwatch.ElapsedMilliseconds);
@@ -42,7 +42,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
                     ? "(unsaved drawing)"
                     : Path.GetFileName(db.Filename);
 
-                options = HarvestOptions.FromEnvironment(drawingName);
+                options = HarvestOptions.FromEnvironment();
                 var reporter = new FileStatusReporter(options);
                 var formatter = new CsvFormatter();
 
@@ -94,9 +94,16 @@ namespace AEC_Batch_Data_Haravester.Extraction
         }
 
         /// <summary>
-        /// Options can be unavailable (no harvest key, unusable output folder). That must
-        /// still fail the drawing loudly, so say it on stderr and write no .ok - the
-        /// supervisor treats a missing status file as failure by design.
+        /// Options can be unavailable: no harvest key, or an unusable output folder. That
+        /// still has to fail the drawing loudly, and it has to stay diagnosable.
+        ///
+        /// stderr alone is not enough. Core Console discards managed stdout and stderr when
+        /// it is redirected (measured: a run with no key produced 0 bytes on both), so the
+        /// supervisor would report "the drawing probably did not open" - a wrong diagnosis
+        /// that sends someone looking at a perfectly good DWG. The output folder is known
+        /// even when the key is not, so the reason goes there as a fixed-name diagnostic
+        /// file. It cannot be mistaken for a drawing's status file: every key ends in
+        /// -&lt;8 hex&gt;, and the supervisor only looks for &lt;key&gt;.ok / .fail.
         /// </summary>
         private static void ReportFailure(
             HarvestOptions? options, string drawingName, string message, string? detail, long elapsedMs)
@@ -111,17 +118,41 @@ namespace AEC_Batch_Data_Haravester.Extraction
             {
                 Console.Error.WriteLine(FileStatusReporter.FailMarker + " " + message);
                 Console.Error.Flush();
-
-                if (!string.IsNullOrEmpty(detail))
-                {
-                    Console.Error.WriteLine(detail);
-                    Console.Error.Flush();
-                }
             }
             catch (IOException)
             {
             }
             catch (ObjectDisposedException)
+            {
+            }
+
+            WriteDiagnostic(message, detail);
+        }
+
+        /// <summary>
+        /// Best effort, never throws: this runs on the way out of an already-failed drawing,
+        /// and a second failure here must not replace the first one's message.
+        /// </summary>
+        private static void WriteDiagnostic(string message, string? detail)
+        {
+            try
+            {
+                string statusFolder = Path.Combine(
+                    HarvestOptions.ResolveOutputFolder(), HarvestOptions.StatusFolderName);
+
+                Directory.CreateDirectory(statusFolder);
+
+                File.WriteAllText(
+                    Path.Combine(statusFolder, HarvestOptions.DiagnosticFileName),
+                    detail is null ? message : message + Environment.NewLine + detail);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+            catch (ArgumentException)
             {
             }
         }

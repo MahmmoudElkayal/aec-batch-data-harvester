@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using System.Text;
 
 namespace AEC_Batch_Data_Haravester.Core
 {
@@ -15,9 +14,18 @@ namespace AEC_Batch_Data_Haravester.Core
     {
         public const string OutputFolderVariable = "AEC_HARVEST_OUTPUT";
         public const string RootFolderVariable = "AEC_HARVEST_ROOT";
+        public const string KeyVariable = "AEC_HARVEST_KEY";
 
         public const string OutputFileName = "Extracted_BOM.csv";
         public const string StatusFolderName = "_status";
+        public const string RowsFolderName = "_rows";
+
+        /// <summary>
+        /// Where a failure that has no key to name itself is explained. Fixed name, so the
+        /// supervisor can look for exactly one file; no key can collide with it because
+        /// every key ends in -&lt;8 hex&gt;.
+        /// </summary>
+        public const string DiagnosticFileName = "_harvest.error.txt";
 
         private HarvestOptions(string outputFolder, string key)
         {
@@ -29,17 +37,35 @@ namespace AEC_Batch_Data_Haravester.Core
         public string OutputFolder { get; }
 
         /// <summary>
-        /// The status-file stem for this drawing. Phase 3 moves its source to the batch
-        /// supervisor (one owner for the rule); for now it is derived from the drawing
-        /// name, exactly as the pre-refactor code did.
+        /// The name stem shared by this drawing's status file and its row file, supplied by
+        /// the batch supervisor in <see cref="KeyVariable"/>.
+        ///
+        /// The plugin never derives it. Deriving it here and again in the BAT was two
+        /// implementations of one rule that agreed by luck; the supervisor now owns it, so
+        /// there is one answer to "which files belong to this drawing".
         /// </summary>
         public string Key { get; }
 
         public string StatusFolder => Path.Combine(OutputFolder, StatusFolderName);
 
-        public static HarvestOptions FromEnvironment(string drawingName)
+        public string RowsFolder => Path.Combine(OutputFolder, RowsFolderName);
+
+        /// <summary>
+        /// Reads the environment, or throws. A missing key fails the drawing: falling back
+        /// to the drawing name would silently reintroduce collisions between two folders
+        /// holding the same file name, which is the whole reason the key exists.
+        /// </summary>
+        public static HarvestOptions FromEnvironment()
         {
-            return new HarvestOptions(ResolveOutputFolder(), FileNames.StatusKey(drawingName));
+            string? key = Environment.GetEnvironmentVariable(KeyVariable);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new InvalidOperationException(
+                    KeyVariable + " is not set. The batch supervisor owns the status key, "
+                    + "and the plugin will not invent one from the drawing name.");
+            }
+
+            return new HarvestOptions(ResolveOutputFolder(), key);
         }
 
         /// <summary>
@@ -65,30 +91,6 @@ namespace AEC_Batch_Data_Haravester.Core
                 ?? Directory.GetCurrentDirectory();
 
             return Path.Combine(assemblyDirectory, "Output");
-        }
-    }
-
-    /// <summary>Pure file-name helpers. No AutoCAD, no I/O.</summary>
-    public static class FileNames
-    {
-        /// <summary>Drawing name -> a legal Windows file name stem.</summary>
-        public static string Sanitize(string name)
-        {
-            char[] invalid = Path.GetInvalidFileNameChars();
-            var builder = new StringBuilder(name.Length);
-
-            foreach (char c in name)
-            {
-                builder.Append(Array.IndexOf(invalid, c) >= 0 ? '_' : c);
-            }
-
-            string result = builder.ToString().Trim();
-            return string.IsNullOrEmpty(result) ? "drawing" : result;
-        }
-
-        public static string StatusKey(string drawingName)
-        {
-            return Sanitize(Path.GetFileNameWithoutExtension(drawingName));
         }
     }
 }

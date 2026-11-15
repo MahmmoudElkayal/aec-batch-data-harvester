@@ -93,25 +93,32 @@ try {
     Check ($run.Code -eq 2) "exit code is 2 (was $($run.Code))"
     Check (($tail | Where-Object { $_ -match 'no status file' }).Count -gt 0) `
         'the batch says the drawing produced no status file'
-    Check (-not (Test-Path (Join-Path $statusDir 'ZZ Truncated.ok'))) `
-        'no .ok file was written for the unreadable drawing'
-    Check (-not (Test-Path (Join-Path $statusDir 'ZZ Truncated.fail'))) `
-        'no .fail file either - nothing ran, which is the point'
+
+    # Status files are keyed <stem>-<hash>, so match on the stem rather than a fixed name.
+    $truncatedFiles = @(Get-ChildItem $statusDir -Filter 'ZZ Truncated-*' -File -ErrorAction SilentlyContinue)
+    Check ($truncatedFiles.Count -eq 0) `
+        'the unreadable drawing left no status or row file of any kind'
 }
 finally {
     Remove-Item $broken -Force -ErrorAction SilentlyContinue
 }
 
 # ---------------------------------------------------------------------------
-# 2. Output that cannot be written. Extraction succeeds, writing does not, so
-#    every drawing must report failure with the exception text preserved.
+# 2. A row folder that cannot be created. Phase 3 writes one file per drawing
+#    inside Output\_rows, so an unusable _rows is a total write failure: every
+#    drawing must report it, and none may claim success.
 # ---------------------------------------------------------------------------
 Write-Host ''
-Write-Host '[2] locked output CSV - extraction cannot write'
+Write-Host '[2] unusable _rows folder - extraction cannot write'
 
-$lock = $null
+$rowsPath = Join-Path $outputDir '_rows'
+$rowsWasFile = $false
 try {
-    $lock = [System.IO.File]::Open($csvPath, 'OpenOrCreate', 'ReadWrite', 'None')
+    # A file where the folder must be: Directory.CreateDirectory then fails, which is
+    # exactly what a permission problem or a dead drive looks like to the sink.
+    if (Test-Path $rowsPath) { Remove-Item $rowsPath -Recurse -Force }
+    Set-Content -Path $rowsPath -Value 'not a folder' -Encoding ASCII
+    $rowsWasFile = $true
 
     $run = Invoke-Pipeline
     $tail = $run.Text -split "`r?`n"
@@ -122,9 +129,10 @@ try {
 
     $fails = @(Get-ChildItem $statusDir -Filter *.fail -ErrorAction SilentlyContinue)
     $oks = @(Get-ChildItem $statusDir -Filter *.ok -ErrorAction SilentlyContinue)
+    $drawings = @(Get-ChildItem $inputDir -Filter *.dwg -File)
 
-    Check ($fails.Count -gt 0) 'a .fail file exists for the failed drawings'
-    Check ($oks.Count -eq 0) 'no stale .ok file survives next to a .fail'
+    Check ($fails.Count -eq $drawings.Count) "every drawing wrote a .fail ($($fails.Count) of $($drawings.Count))"
+    Check ($oks.Count -eq 0) 'no .ok was written when nothing could be stored'
 
     if ($fails.Count -gt 0) {
         $errorFile = [System.IO.Path]::ChangeExtension($fails[0].FullName, '.error.txt')
@@ -142,7 +150,8 @@ try {
     }
 }
 finally {
-    if ($lock) { $lock.Dispose() }
+    # Removing the stand-in file is the whole recovery: the next run recreates the folder.
+    if ($rowsWasFile -and (Test-Path $rowsPath)) { Remove-Item $rowsPath -Force }
 }
 
 # ---------------------------------------------------------------------------
