@@ -116,6 +116,7 @@ REM ------------------------------------------------------------- reset counters
 set /a TOTAL=0
 set /a OK=0
 set /a FAILED=0
+set /a NORESULT=0
 
 echo.
 echo Console : %CONSOLE%
@@ -148,11 +149,16 @@ if %TOTAL%==0 (
 
 if %FAILED% GTR 0 (
     echo [WARN] %FAILED% drawing^(s^) failed. Check the logs in "%LOGS%".
+    if %NORESULT% GTR 0 echo [WARN] %NORESULT% of them wrote no status file at all - they probably failed to open.
 )
 
 echo.
 echo Done.
 if not defined NOPAUSE pause
+
+REM A non-zero exit is the only signal a caller (scheduled task, CI, another script)
+REM can see. Without this, a run where every drawing failed still looks successful.
+if %FAILED% GTR 0 exit /b 2
 exit /b 0
 
 REM ===========================================================================
@@ -169,14 +175,33 @@ REM Console needs EOF to know the script is finished.
 
 REM accoreconsole's own exit code is not reliable (and it swallows managed stdout),
 REM so the assembly writes <Output>\_status\<drawing>.ok or .fail. Trust that.
+REM Absence of BOTH is also a failure: a drawing that cannot be opened never reaches
+REM the command, so it writes nothing at all. That is the corrupt-file case.
 set "STATUS=%OUTPUT%\_status\%~n1.ok"
-if exist "%STATUS%" (
-    set /a OK+=1
-    for /f "delims=" %%L in ('type "%STATUS%"') do echo   %%L
-) else (
-    set /a FAILED+=1
-    echo   FAIL  - see "%LOGS%\%~n1.log"
-)
+set "FAILDOC=%OUTPUT%\_status\%~n1.fail"
+set "ROWSFILE=%OUTPUT%\_status\%~n1.rows"
+
+if exist "%STATUS%" goto :HarvestOk
+if exist "%FAILDOC%" goto :HarvestFail
+
+set /a FAILED+=1
+set /a NORESULT+=1
+echo   FAIL  - no status file. The drawing probably did not open.
+exit /b 0
+
+:HarvestOk
+set /a OK+=1
+REM Row count comes from a digits-only file, so it can be echoed without the
+REM escaping hazards of echoing arbitrary text (a drawing name may contain & or <).
+set "ROWCOUNT="
+if exist "%ROWSFILE%" for /f "delims=" %%N in ('type "%ROWSFILE%"') do set "ROWCOUNT=%%N"
+if defined ROWCOUNT echo   OK    - %ROWCOUNT% rows
+if not defined ROWCOUNT echo   OK
+exit /b 0
+
+:HarvestFail
+set /a FAILED+=1
+echo   FAIL  - reported failure. Details: "%OUTPUT%\_status\%~n1.error.txt"
 exit /b 0
 
 REM ===========================================================================

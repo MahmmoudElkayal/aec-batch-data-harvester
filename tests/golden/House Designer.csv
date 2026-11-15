@@ -1,21 +1,21 @@
-Drawing,EntityType,Name,Layer,Handle,X,Y,Z,Length
-House Designer.dwg,Block,Bath Tub - 26 x 60 in.,0,47,20.593,287.084,0.000,
-House Designer.dwg,Block,Chimney - elevation,0,94,134.820,164.860,0.000,
-House Designer.dwg,Block,Door - Bifold 60 in. Opening,0,A8,155.405,268.908,0.000,
-House Designer.dwg,Block,Door - Fancy 36 in.,0,115,228.934,201.702,0.000,
-House Designer.dwg,Block,Garage Door - Paneled 10 ft.,0,16C,282.855,201.702,0.000,
-House Designer.dwg,Block,Door - Plain 36 in.,0,177,421.509,203.802,0.000,
-House Designer.dwg,Block,Door - Left Hung 36 in.,0,182,33.509,137.296,0.000,
-House Designer.dwg,Block,Door - Right Hung 36 in.,0,18D,121.043,138.696,0.000,
-House Designer.dwg,Block,Faucet - Bathroom front,0,1F4,149.754,153.398,0.000,
-House Designer.dwg,Block,Faucet - Bathroom side,0,23D,149.054,143.597,0.000,
-House Designer.dwg,Block,Faucet - Bathroom top,0,298,148.611,132.835,0.000,
-House Designer.dwg,Block,Sink - Oval top,0,2AD,178.465,146.397,0.000,
-House Designer.dwg,Block,Sink - Pedestal elevation,0,2CA,219.781,128.896,0.000,
-House Designer.dwg,Block,Staircase - Spiral,0,2F5,277.204,141.497,0.000,
-House Designer.dwg,Block,Toilet - front,0,328,340.928,125.395,0.000,
-House Designer.dwg,Block,Toilet - side,0,35C,376.642,127.495,0.000,
-House Designer.dwg,Block,Toilet - top,0,391,446.669,154.798,0.000,
-House Designer.dwg,Block,Window - Half-circle 36 in.,0,3CC,41.912,68.690,0.000,
-House Designer.dwg,Block,Window - Wood Frame 36 in. Wide plan,0,3E2,112.640,76.391,0.000,
-House Designer.dwg,Block,Window - Wood Frame 36 x 36 in.,0,3FB,175.664,58.890,0.000,
+Drawing,Space,EntityType,Name,BlockDefinition,Layer,Handle,X,Y,Z,Length,Unit,UnitCode
+House Designer.dwg,Model,Block,Bath Tub - 26 x 60 in.,Bath Tub - 26 x 60 in.,0,47,20.593,287.084,0.000,,Inches,1
+House Designer.dwg,Model,Block,Chimney - elevation,Chimney - elevation,0,94,134.820,164.860,0.000,,Inches,1
+House Designer.dwg,Model,Block,Door - Bifold 60 in. Opening,Door - Bifold 60 in. Opening,0,A8,155.405,268.908,0.000,,Inches,1
+House Designer.dwg,Model,Block,Door - Fancy 36 in.,Door - Fancy 36 in.,0,115,228.934,201.702,0.000,,Inches,1
+House Designer.dwg,Model,Block,Garage Door - Paneled 10 ft.,Garage Door - Paneled 10 ft.,0,16C,282.855,201.702,0.000,,Inches,1
+House Designer.dwg,Model,Block,Door - Plain 36 in.,Door - Plain 36 in.,0,177,421.509,203.802,0.000,,Inches,1
+House Designer.dwg,Model,Block,Door - Left Hung 36 in.,Door - Left Hung 36 in.,0,182,33.509,137.296,0.000,,Inches,1
+House Designer.dwg,Model,Block,Door - Right Hung 36 in.,Door - Right Hung 36 in.,0,18D,121.043,138.696,0.000,,Inches,1
+House Designer.dwg,Model,Block,Faucet - Bathroom front,Faucet - Bathroom front,0,1F4,149.754,153.398,0.000,,Inches,1
+House Designer.dwg,Model,Block,Faucet - Bathroom side,Faucet - Bathroom side,0,23D,149.054,143.597,0.000,,Inches,1
+House Designer.dwg,Model,Block,Faucet - Bathroom top,Faucet - Bathroom top,0,298,148.611,132.835,0.000,,Inches,1
+House Designer.dwg,Model,Block,Sink - Oval top,Sink - Oval top,0,2AD,178.465,146.397,0.000,,Inches,1
+House Designer.dwg,Model,Block,Sink - Pedestal elevation,Sink - Pedestal elevation,0,2CA,219.781,128.896,0.000,,Inches,1
+House Designer.dwg,Model,Block,Staircase - Spiral,Staircase - Spiral,0,2F5,277.204,141.497,0.000,,Inches,1
+House Designer.dwg,Model,Block,Toilet - front,Toilet - front,0,328,340.928,125.395,0.000,,Inches,1
+House Designer.dwg,Model,Block,Toilet - side,Toilet - side,0,35C,376.642,127.495,0.000,,Inches,1
+House Designer.dwg,Model,Block,Toilet - top,Toilet - top,0,391,446.669,154.798,0.000,,Inches,1
+House Designer.dwg,Model,Block,Window - Half-circle 36 in.,Window - Half-circle 36 in.,0,3CC,41.912,68.690,0.000,,Inches,1
+House Designer.dwg,Model,Block,Window - Wood Frame 36 in. Wide plan,Window - Wood Frame 36 in. Wide plan,0,3E2,112.640,76.391,0.000,,Inches,1
+House Designer.dwg,Model,Block,Window - Wood Frame 36 x 36 in.,Window - Wood Frame 36 x 36 in.,0,3FB,175.664,58.890,0.000,,Inches,1
