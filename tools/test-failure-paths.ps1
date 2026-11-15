@@ -32,6 +32,12 @@ $bat       = Join-Path $Root 'RunPipeline.bat'
 
 $script:failures = 0
 
+# Mode 2 replaces _rows with a file to make writes fail. If a previous run was killed
+# before its cleanup, that stand-in is still there and every drawing would fail for the
+# wrong reason. Put the tree back before measuring anything.
+$rowsPath = Join-Path $outputDir '_rows'
+if (Test-Path $rowsPath -PathType Leaf) { Remove-Item $rowsPath -Force }
+
 function Check([bool] $condition, [string] $what) {
     if ($condition) {
         Write-Host "    ok    $what" -ForegroundColor Green
@@ -75,8 +81,9 @@ $source = Get-ChildItem $inputDir -Filter *.dwg -File | Select-Object -First 1
 if (-not $source) { Write-Host "[FAIL] Input_DWGs contains no DWG to copy"; exit 1 }
 
 # ---------------------------------------------------------------------------
-# 1. A DWG that cannot be opened. Core Console never reaches the command, so
-#    nothing writes a status file. Silence must not look like success.
+# 1. A DWG that cannot be opened. In the batch engine this is a per-drawing
+#    failure: the .fail names the drawing, the other drawings are unaffected,
+#    and no row file is published for it.
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '[1] truncated DWG - cannot be opened'
@@ -84,20 +91,29 @@ Write-Host '[1] truncated DWG - cannot be opened'
 $broken = Join-Path $inputDir 'ZZ Truncated.dwg'
 $bytes = [System.IO.File]::ReadAllBytes($source.FullName)
 [System.IO.File]::WriteAllBytes($broken, $bytes[0..4095])
-Write-Host ("    wrote {0} bytes from '{1}'" -f 4096, $source.Name)
+Write-Host (("    wrote {0} bytes from '{1}'") -f 4096, $source.Name)
 
 try {
     $run = Invoke-Pipeline
     $tail = $run.Text -split "`r?`n"
 
     Check ($run.Code -eq 2) "exit code is 2 (was $($run.Code))"
-    Check (($tail | Where-Object { $_ -match 'no status file' }).Count -gt 0) `
-        'the batch says the drawing produced no status file'
+    Check (($tail | Where-Object { $_ -match 'FAIL' }).Count -gt 0) `
+        'the batch reports a failure for the unreadable drawing'
 
-    # Status files are keyed <stem>-<hash>, so match on the stem rather than a fixed name.
-    $truncatedFiles = @(Get-ChildItem $statusDir -Filter 'ZZ Truncated-*' -File -ErrorAction SilentlyContinue)
-    Check ($truncatedFiles.Count -eq 0) `
-        'the unreadable drawing left no status or row file of any kind'
+    $truncatedFail = @(Get-ChildItem $statusDir -Filter 'ZZ Truncated-*.fail' -File -ErrorAction SilentlyContinue)
+    Check ($truncatedFail.Count -eq 1) "it wrote one .fail (found $($truncatedFail.Count))"
+
+    $truncatedOther = @(Get-ChildItem $statusDir -Filter 'ZZ Truncated-*' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notmatch '\.(fail|error\.txt)$' })
+    Check ($truncatedOther.Count -eq 0) `
+        'it wrote no .ok and no row count - the failure is not dressed up as success'
+
+    $truncatedRows = @(Get-ChildItem $rowsDir -Filter 'ZZ Truncated-*.csv' -File -ErrorAction SilentlyContinue)
+    Check ($truncatedRows.Count -eq 0) 'it published no row file'
+
+    $goodDone = @(Get-ChildItem $statusDir -Filter *.ok -File -ErrorAction SilentlyContinue)
+    Check ($goodDone.Count -eq 3) "the three good drawings still completed (found $($goodDone.Count))"
 }
 finally {
     Remove-Item $broken -Force -ErrorAction SilentlyContinue
@@ -124,7 +140,7 @@ try {
     $tail = $run.Text -split "`r?`n"
 
     Check ($run.Code -eq 2) "exit code is 2 (was $($run.Code))"
-    Check (($tail | Where-Object { $_ -match 'reported failure' }).Count -gt 0) `
+    Check (($tail | Where-Object { $_ -match 'FAIL' }).Count -gt 0) `
         'the batch reports failures rather than silence'
 
     $fails = @(Get-ChildItem $statusDir -Filter *.fail -ErrorAction SilentlyContinue)

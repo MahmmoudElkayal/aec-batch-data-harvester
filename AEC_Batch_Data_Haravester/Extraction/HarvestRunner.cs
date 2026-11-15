@@ -135,26 +135,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
         /// </summary>
         private static void WriteDiagnostic(string message, string? detail)
         {
-            try
-            {
-                string statusFolder = Path.Combine(
-                    HarvestOptions.ResolveOutputFolder(), HarvestOptions.StatusFolderName);
-
-                Directory.CreateDirectory(statusFolder);
-
-                File.WriteAllText(
-                    Path.Combine(statusFolder, HarvestOptions.DiagnosticFileName),
-                    detail is null ? message : message + Environment.NewLine + detail);
-            }
-            catch (IOException)
-            {
-            }
-            catch (UnauthorizedAccessException)
-            {
-            }
-            catch (ArgumentException)
-            {
-            }
+            DiagnosticFile.Write(message, detail);
         }
     }
 }

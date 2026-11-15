@@ -16,6 +16,9 @@ namespace AEC_Batch_Data_Haravester.Core
         public const string RootFolderVariable = "AEC_HARVEST_ROOT";
         public const string KeyVariable = "AEC_HARVEST_KEY";
 
+        /// <summary>Set by the supervisor to the chunk manifest the engine should process.</summary>
+        public const string BatchManifestVariable = "AEC_HARVEST_BATCH";
+
         public const string OutputFileName = "Extracted_BOM.csv";
         public const string StatusFolderName = "_status";
         public const string RowsFolderName = "_rows";
@@ -26,6 +29,18 @@ namespace AEC_Batch_Data_Haravester.Core
         /// every key ends in -&lt;8 hex&gt;.
         /// </summary>
         public const string DiagnosticFileName = "_harvest.error.txt";
+
+        /// <summary>
+        /// The drawing the engine is working on, so a killed process can be blamed on one
+        /// drawing instead of the whole chunk. Fixed name, same collision argument.
+        /// </summary>
+        public const string CurrentMarkerFileName = "_current.txt";
+
+        /// <summary>
+        /// What the engine did, in one JSON object: counts and engine time. Read by the
+        /// supervisor's summary and by the Phase 4 acceptance check.
+        /// </summary>
+        public const string BatchSummaryFileName = "_batch.json";
 
         private HarvestOptions(string outputFolder, string key)
         {
@@ -63,6 +78,21 @@ namespace AEC_Batch_Data_Haravester.Core
                 throw new InvalidOperationException(
                     KeyVariable + " is not set. The batch supervisor owns the status key, "
                     + "and the plugin will not invent one from the drawing name.");
+            }
+
+            return FromKey(key!);
+        }
+
+        /// <summary>
+        /// One drawing in a batch: the key comes from the manifest line rather than the
+        /// environment, because one process now harvests many drawings.
+        /// </summary>
+        public static HarvestOptions FromKey(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new InvalidOperationException(
+                    "the batch manifest supplied a blank key; the plugin will not invent one.");
             }
 
             return new HarvestOptions(ResolveOutputFolder(), key);

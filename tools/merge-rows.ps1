@@ -25,6 +25,7 @@ $ErrorActionPreference = 'Stop'
 if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
 
 $rowsDir = Join-Path $Root 'Output\_rows'
+$statusDir = Join-Path $Root 'Output\_status'
 $target  = Join-Path $Root 'Output\Extracted_BOM.csv'
 
 if (-not (Test-Path $rowsDir)) {
@@ -32,7 +33,19 @@ if (-not (Test-Path $rowsDir)) {
     exit 0
 }
 
-$files = @(Get-ChildItem $rowsDir -Filter *.csv -File | Sort-Object Name)
+# Only drawings that reported success are data. A row file without its .ok is the
+# signature of a process killed between publishing rows and publishing the verdict;
+# merging it would publish a drawing the batch considers failed.
+$files = @(Get-ChildItem $rowsDir -Filter *.csv -File | Sort-Object Name |
+    Where-Object {
+        Test-Path (Join-Path $statusDir (
+            [System.IO.Path]::GetFileNameWithoutExtension($_.Name) + '.ok'))
+    })
+
+$skipped = @(Get-ChildItem $rowsDir -Filter *.csv -File | Sort-Object Name).Count - $files.Count
+if ($skipped -gt 0) {
+    Write-Host ("[WARN] {0} row file(s) have no .ok and were not merged." -f $skipped)
+}
 
 if ($files.Count -eq 0) {
     Write-Host '[WARN] No completed drawings to merge.'

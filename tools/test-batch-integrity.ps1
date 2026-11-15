@@ -149,61 +149,42 @@ try {
 
     # ------------------------------------------------------------------ 4
     Write-Host ''
-    Write-Host '[4] a missing AEC_HARVEST_KEY fails the drawing'
+    Write-Host '[4] an unusable manifest key is refused before anything runs'
 
-    $scratch = Join-Path $env:TEMP ('aec-nokey-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    # The key is a file name. A separator or colon in it would put status files outside
+    # _status, where the supervisor will never look - so the whole manifest is refused,
+    # loudly, instead of half-running under names nobody can find.
+    $scratch = Join-Path $env:TEMP ('aec-badkey-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Path $scratch -Force | Out-Null
 
-    $previousOutput = $env:AEC_HARVEST_OUTPUT
-    $previousKey = $env:AEC_HARVEST_KEY
     try {
-        $env:AEC_HARVEST_OUTPUT = $scratch
-        Remove-Item Env:AEC_HARVEST_KEY -ErrorAction SilentlyContinue
+        $scratchOutput = Join-Path $scratch 'Output'
+        New-Item -ItemType Directory -Path $scratchOutput -Force | Out-Null
 
-        $log = Join-Path $scratch 'run.log'
-        $err = Join-Path $scratch 'run.err'
-        $emptyInput = Join-Path $scratch 'empty.stdin'
-        Set-Content -Path $emptyInput -Value '' -Encoding ASCII
+        $badManifest = Join-Path $scratchOutput 'manifest.txt'
+        [System.IO.File]::WriteAllText(
+            $badManifest,
+            "FolderA\Plan-3fa11b4c|" + $source.FullName + "`r`n")
 
-        # The path must be quoted: a drawing name with a space, unquoted, makes Core
-        # Console report "cannot find the specified drawing file" and exit before the
-        # command ever runs - which would make "no status file" pass for the wrong reason.
-        $arguments = '/i "' + $source.FullName + '" /s "' + $scriptFile + '" /l en-US /readonly'
+        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File `
+            (Join-Path $Root 'tools\run-harvest-batch.ps1') `
+            -Root $scratch -Manifest $badManifest `
+            -Script (Join-Path $Root 'Scripts\HarvestBatch.scr') `
+            -Console $console 2>&1 | Out-String
+        $code = $LASTEXITCODE
 
-        $process = Start-Process -FilePath $console `
-            -ArgumentList $arguments `
-            -RedirectStandardInput $emptyInput -RedirectStandardOutput $log -RedirectStandardError $err `
-            -NoNewWindow -Wait -PassThru
+        Check ($code -eq 1) "the supervisor refuses it (exit was $code)"
+        Check ([bool] ($output -match 'not usable as a file name')) `
+            'the reason names the rule, not just a failure'
 
-        # Proof the command actually ran: an unquoted /i makes Core Console exit before
-        # NETLOAD, which would make "no status file" pass for the wrong reason. The
-        # diagnostic below is written by the plugin, so it can only exist if the command
-        # ran; the stack frame in it says which command.
-        $statusDirScratch = Join-Path $scratch '_status'
-        $okFiles = @()
-        $failFiles = @()
-        if (Test-Path $statusDirScratch) {
-            $okFiles = @(Get-ChildItem $statusDirScratch -Filter *.ok -File -ErrorAction SilentlyContinue)
-            $failFiles = @(Get-ChildItem $statusDirScratch -Filter *.fail -File -ErrorAction SilentlyContinue)
+        $statusFiles = @()
+        $scratchStatus = Join-Path $scratchOutput '_status'
+        if (Test-Path $scratchStatus) {
+            $statusFiles = @(Get-ChildItem $scratchStatus -File -Recurse -ErrorAction SilentlyContinue)
         }
-
-        Check ($okFiles.Count -eq 0) 'no .ok was written without a key'
-        Check ($failFiles.Count -eq 0) 'no status file was invented either - absence is how this fails'
-
-        # Core Console discards managed stdout and stderr (measured: 0 bytes on both for
-        # exactly this run), so the reason must survive in a file.
-        $diagnostic = Join-Path $statusDirScratch '_harvest.error.txt'
-        Check (Test-Path $diagnostic) 'the reason is kept in _status\_harvest.error.txt'
-
-        if (Test-Path $diagnostic) {
-            $text = [System.IO.File]::ReadAllText($diagnostic)
-            Check ([bool] ($text -match 'HarvestRunner')) 'the command itself ran (the reason carries its managed stack)'
-            Check ([bool] ($text -match 'AEC_HARVEST_KEY')) "the reason names the variable: $($text.Split("`n")[0])"
-        }
+        Check ($statusFiles.Count -eq 0) 'no status file was written - nothing was reported as success'
     }
     finally {
-        $env:AEC_HARVEST_OUTPUT = $previousOutput
-        $env:AEC_HARVEST_KEY = $previousKey
         Remove-Item $scratch -Recurse -Force -ErrorAction SilentlyContinue
     }
 
@@ -248,27 +229,65 @@ try {
 
     $process = Start-Process -FilePath 'cmd.exe' `
         -ArgumentList @('/c', "`"$bat`" /q") -PassThru -WindowStyle Hidden
-    Start-Sleep -Milliseconds 3200
-    & taskkill /T /F /PID $process.Id 2>&1 | Out-Null
-    Start-Sleep -Milliseconds 500
+
+    # Early enough to be inside the chunk (a full run takes ~3 s), late enough that some
+    # drawings have already reported - otherwise the test proves only that an idle process
+    # can be killed.
+    Start-Sleep -Milliseconds 2200
+
+    # taskkill writes to stderr, and a target that already exited is not an error worth
+    # stopping for: the assertion below does not depend on the kill having succeeded.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & taskkill /T /F /PID $process.Id 2>&1 | Out-Null
+        Start-Sleep -Milliseconds 500
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
 
     $published = @(Get-ChildItem $rowsDir -Filter *.csv -File -ErrorAction SilentlyContinue)
     $tempFiles = @(Get-ChildItem $rowsDir -Filter *.tmp -File -ErrorAction SilentlyContinue)
 
-    $orphans = 0
-    $mismatched = 0
-    foreach ($file in $published) {
-        $key = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-        $status = Join-Path $statusDir ($key + '.ok')
+    # A success verdict must have data behind it. The reverse window exists (the row file
+    # is published just before the .ok), which is why the merge only takes drawings that
+    # reported .ok - asserted below, not assumed.
+    $okWithoutRows = 0
+    foreach ($ok in @(Get-ChildItem $statusDir -Filter *.ok -File -ErrorAction SilentlyContinue)) {
+        $key = [System.IO.Path]::GetFileNameWithoutExtension($ok.Name)
+        if (-not (Test-Path (Join-Path $rowsDir ($key + '.csv')))) { $okWithoutRows++ }
+    }
+    Check ($okWithoutRows -eq 0) "no .ok lacks its row file (found $okWithoutRows)"
 
-        if (-not (Test-Path $status)) { $orphans++; continue }
-
-        $reported = (Get-Content $status -Raw | ConvertFrom-Json).rows
-        if ((Get-RowFileCount $file.FullName) -ne [int]$reported) { $mismatched++ }
+    # Merge what survived, and prove it contains exactly the drawings that reported.
+    $expectedRows = 0
+    foreach ($rows in @(Get-ChildItem $statusDir -Filter *.rows -File -ErrorAction SilentlyContinue)) {
+        $key = [System.IO.Path]::GetFileNameWithoutExtension($rows.Name)
+        if (Test-Path (Join-Path $statusDir ($key + '.ok'))) {
+            $expectedRows += [int]((Get-Content $rows.FullName -Raw).Trim())
+        }
     }
 
-    Check ($orphans -eq 0) "no published row file lacks its .ok (orphans: $orphans)"
-    Check ($mismatched -eq 0) "every published row file matches its reported row count (mismatched: $mismatched)"
+    & powershell -NoProfile -ExecutionPolicy Bypass -File `
+        (Join-Path $Root 'tools\merge-rows.ps1') -Root $Root | Out-Null
+
+    $mergedAfterKill = 0
+    if (Test-Path $csv) {
+        $mergedAfterKill = @([System.IO.File]::ReadAllLines($csv)).Count - 1
+    }
+    Check ($mergedAfterKill -eq $expectedRows) `
+        "the merge published only reported drawings ($mergedAfterKill rows, expected $expectedRows)"
+
+    # A row file that lost the race to its .ok must not reach the merged CSV. Every merged
+    # row is accounted for by a .rows file that has an .ok, so any orphan above is excluded
+    # by construction - reported, not asserted twice.
+    $dataWithoutOk = @(Get-ChildItem $rowsDir -Filter *.csv -File | Where-Object {
+        -not (Test-Path (Join-Path $statusDir (
+            [System.IO.Path]::GetFileNameWithoutExtension($_.Name) + '.ok')))
+    })
+    Write-Host ("    (row files published but not yet reported: {0})" -f $dataWithoutOk.Count)
+
     Write-Host ("    (temporary files left by the kill: {0})" -f $tempFiles.Count)
 
     # ------------------------------------------------------------------ 7

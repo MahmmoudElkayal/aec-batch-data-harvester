@@ -101,7 +101,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 written += buffer.Count;
             }
 
-            return new HarvestResult(written, skipped);
+            return new HarvestResult(written, skipped, unit, unitCode);
         }
     }
 }

@@ -35,6 +35,9 @@ namespace Harvest.Checks
             StatusJsonChecks();
             CsvFormatChecks();
             KeyChecks();
+            ManifestChecks();
+            TimeoutVerdictChecks();
+            BatchSummaryChecks();
             SchemaChecks();
 
             Console.WriteLine();
@@ -223,8 +226,164 @@ namespace Harvest.Checks
             }
         }
 
-        // ----------------------------------------------------------------- schema
+        // --------------------------------------------------------- batch manifest
 
+        private static void ManifestChecks()
+        {
+            Section("batch manifest");
+
+            Check("key|path lines parse in order", () =>
+            {
+                var entries = BatchManifest.Parse(new[]
+                {
+                    "House Designer-bbfb5689|C:\\In\\House Designer.dwg",
+                    "Plan-f65fe327|C:\\In\\Plan.dwg"
+                });
+
+                return Expect(entries.Count == 2, "count")
+                    ?? Expect(entries[0].Key == "House Designer-bbfb5689", "first key")
+                    ?? Expect(entries[0].Path == "C:\\In\\House Designer.dwg", "first path");
+            });
+
+            Check("blank lines and comments are ignored", () =>
+            {
+                var entries = BatchManifest.Parse(new[]
+                {
+                    "",
+                    "   ",
+                    "# a comment",
+                    "K-00000000|C:\\a.dwg"
+                });
+
+                return Expect(entries.Count == 1, "count: " + entries.Count);
+            });
+
+            Check("a line without a separator is rejected by line number", () =>
+            {
+                var ex = Throws<FormatException>(() => BatchManifest.Parse(new[]
+                {
+                    "K-00000000|C:\\a.dwg",
+                    "not a manifest line"
+                }));
+
+                return Expect(ex.Message.Contains("line 2", StringComparison.Ordinal),
+                    "does not name the line: " + ex.Message);
+            });
+
+            Check("an empty path is rejected", () =>
+            {
+                var ex = Throws<FormatException>(
+                    () => BatchManifest.Parse(new[] { "K-00000000|" }));
+
+                return Expect(ex.Message.Contains("not 'key|path'", StringComparison.Ordinal),
+                    ex.Message);
+            });
+
+            Check("a key that is not a file name is rejected", () =>
+            {
+                // A key becomes <key>.csv and <key>.ok. A separator or colon in it would
+                // put the status file somewhere the supervisor never looks.
+                foreach (string bad in new[] { "a/b", "a\\b", "a:b", "a?b", "a*b" })
+                {
+                    var ex = Throws<FormatException>(
+                        () => BatchManifest.Parse(new[] { bad + "|C:\\a.dwg" }));
+
+                    if (!ex.Message.Contains("unusable key", StringComparison.Ordinal))
+                    {
+                        return "wrong rejection for '" + bad + "': " + ex.Message;
+                    }
+                }
+
+                return null;
+            });
+
+            Check("a duplicate key is rejected", () =>
+            {
+                var ex = Throws<FormatException>(() => BatchManifest.Parse(new[]
+                {
+                    "K-00000000|C:\\a.dwg",
+                    "K-00000000|C:\\b.dwg"
+                }));
+
+                return Expect(ex.Message.Contains("repeats the key", StringComparison.Ordinal),
+                    ex.Message);
+            });
+        }
+
+        // ---------------------------------------------------------- timeout verdict
+
+        private static void TimeoutVerdictChecks()
+        {
+            Section("who a killed process is blamed on");
+
+            var chunk = new[]
+            {
+                new BatchEntry("A", "a.dwg"),
+                new BatchEntry("B", "b.dwg"),
+                new BatchEntry("C", "c.dwg")
+            };
+
+            Check("the in-flight drawing is blamed", () =>
+            {
+                string? key = TimeoutVerdict.Choose("B", chunk, _ => false);
+                return Expect(key == "B", "chose " + key);
+            });
+
+            Check("a drawing that already reported is never blamed", () =>
+            {
+                // The marker can outlive the drawing it names: killed between writing the
+                // .ok and clearing the marker. Blaming it would overwrite a good result.
+                string? key = TimeoutVerdict.Choose("A", chunk, k => k == "A");
+                return Expect(key == "B", "chose " + key);
+            });
+
+            Check("with no marker the first unreported drawing is blamed", () =>
+            {
+                string? key = TimeoutVerdict.Choose(null, chunk, k => k == "A");
+                return Expect(key == "B", "chose " + key);
+            });
+
+            Check("a marker outside the chunk is ignored", () =>
+            {
+                string? key = TimeoutVerdict.Choose("Z", chunk, _ => false);
+                return Expect(key == "A", "chose " + key);
+            });
+
+            Check("nothing is blamed when everything reported", () =>
+            {
+                string? key = TimeoutVerdict.Choose("C", chunk, _ => true);
+                return Expect(key is null, "chose " + key);
+            });
+        }
+
+        // ------------------------------------------------------------ batch summary
+
+        private static void BatchSummaryChecks()
+        {
+            Section("batch summary");
+
+            Check("counts and per-drawing engine time parse", () =>
+            {
+                using JsonDocument doc = Parse(BatchSummaryJson.Build(3, 2, 1, 103));
+                JsonElement root = doc.RootElement;
+
+                return Expect(root.GetProperty("drawings").GetInt32() == 3, "drawings")
+                    ?? Expect(root.GetProperty("ok").GetInt32() == 2, "ok")
+                    ?? Expect(root.GetProperty("failed").GetInt32() == 1, "failed")
+                    ?? Expect(root.GetProperty("engineMs").GetInt64() == 103, "engineMs")
+                    ?? Expect(Math.Abs(root.GetProperty("perDrawingMs").GetDouble() - 34.3) < 0.05,
+                        "perDrawingMs");
+            });
+
+            Check("an empty chunk has no divide by zero", () =>
+            {
+                using JsonDocument doc = Parse(BatchSummaryJson.Build(0, 0, 0, 0));
+                return Expect(doc.RootElement.GetProperty("perDrawingMs").GetDouble() == 0.0,
+                    "perDrawingMs");
+            });
+        }
+
+        // ----------------------------------------------------------------- schema
         private static void SchemaChecks()
         {
             Section("CSV schema");
