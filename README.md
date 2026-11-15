@@ -1,16 +1,18 @@
 # AEC Batch Data Harvester
 
-Headless batch data extraction for AutoCAD 2026 drawings. Point it at a folder of DWGs,
-get a single CSV of every block, polyline and (soon) attribute in them — with no AutoCAD
-window, no dialogs and no modification of the source files.
+Headless batch data extraction for AutoCAD 2026 drawings. Point it at a folder of DWGs and
+get two CSVs: one row per entity (blocks, polylines, lines, arcs, circles, text, solids) and
+one row per block attribute. No AutoCAD window, no dialogs, and no modification of the
+source files.
 
 Built as an AutoCAD 2026 managed .NET plug-in that runs both inside the desktop product
 (`NETLOAD` + `Extract_BOM`) and inside **AutoCAD Core Console** (`accoreconsole.exe`), which
 is what makes unattended batch processing possible.
 
-> **Status: early prototype.** The extraction pipeline and the batch runner work end to end.
-> Verified against 3 sample drawings: **3,278 rows, 0 duplicates, ~2 s per drawing.**
-> The set of extracted entity types is deliberately small while the data schema is being decided.
+> **Status: working end-to-end prototype.** Verified against 3 sample drawings:
+> **6,748 entity rows and 219 attribute rows, 0 duplicates, 39–77 ms of engine time per
+> drawing.** Every entity type in the corpus census is extracted; nested blocks, xrefs and
+> vertical AEC objects are still out of scope.
 
 ---
 
@@ -19,10 +21,11 @@ is what makes unattended batch processing possible.
 | | |
 |---|---|
 | **Reads** | DWG files without opening them in the AutoCAD UI |
-| **Finds** | block references (name, layer, handle, insertion point) and LWPOLYLINEs (layer, handle, length) |
-| **Writes** | one flat, append-safe CSV — header written once, RFC 4180 quoting, UTF-8 without BOM |
+| **Finds** | block references (name, definition, layer, handle, insertion point, attributes), LWPOLYLINEs, lines, arcs, circles, DBText/MText, solids, in model and paper space |
+| **Writes** | `Extracted_BOM.csv` (entities) and `Extracted_Attributes.csv` (long-format attributes) — RFC 4180, UTF-8 without BOM by default |
 | **Never writes** | to the drawings themselves (`/readonly` + read-only transactions) |
-| **Reports** | per-drawing success/failure + row count, plus a per-drawing log |
+| **Reports** | per-drawing success/failure, row and attribute counts, plus a per-drawing log |
+| **Resumes** | `/append` skips drawings that already have rows *and* a verdict, and retries failures |
 
 ## Requirements
 
@@ -48,17 +51,33 @@ dotnet build AEC_Batch_Data_Haravester.slnx
 RunPipeline.bat
 ```
 
-Results land in `Output\Extracted_BOM.csv`.
+Results land in `Output\Extracted_BOM.csv` and `Output\Extracted_Attributes.csv`.
 
 ### Runner flags
 
 ```bat
 RunPipeline.bat              :: harvest everything directly in Input_DWGs
 RunPipeline.bat /r           :: ... including sub-folders
-RunPipeline.bat /append      :: keep appending instead of resetting the CSV
+RunPipeline.bat /append      :: resume: keep finished drawings, retry failures
 RunPipeline.bat /new         :: rebuild the DLL first
 RunPipeline.bat /q           :: do not pause at the end
 ```
+
+`/append` is a resume, not an append-to-one-file: finished per-drawing results stay, and
+only drawings without a complete result are harvested again. The merged CSV is always
+rebuilt from the per-drawing files, so it never contains a drawing twice.
+
+### Environment switches
+
+| Variable | Effect |
+|---|---|
+| `AEC_HARVEST_CHUNK` | drawings per Core Console process (default 50) |
+| `AEC_HARVEST_TIMEOUT` | seconds per chunk before the process is killed (default 300) |
+| `AEC_HARVEST_EXCEL_SAFE=1` | prefix text starting with `= + - @` or a tab with `'` so Excel does not treat it as a formula. Text columns only; numeric columns are untouched. Off by default because it changes real layer names |
+| `AEC_HARVEST_UTF8_BOM=1` | write a UTF-8 BOM (plugin and merge) so Windows Excel decodes non-ASCII text correctly. Off by default because parsers do not want one |
+
+Both switches are on only for the exact value `1`; `true` is treated as off, so a typo cannot
+silently rewrite output.
 
 The runner auto-detects the newest `Debug`/`Release` build, regenerates the Core Console
 script so the `NETLOAD` path can never go stale, logs every drawing to `Logs\`, and prints a
@@ -69,60 +88,88 @@ processed / succeeded / failed summary.
 ```bat
 "C:\Program Files\Autodesk\AutoCAD 2026\accoreconsole.exe" ^
     /i "Input_DWGs\MyDrawing.dwg" ^
-    /s "Scripts\RunExtraction.scr" ^
+    /s "Scripts\HarvestBatch.scr" ^
     /readonly  < nul
 ```
 
 ## Output schema
 
-`Output\Extracted_BOM.csv`
+### `Output\Extracted_BOM.csv` — one row per entity
 
 | Column | Meaning |
 |---|---|
 | `Drawing` | source DWG file name |
-| `EntityType` | `Block` or `Polyline` |
-| `Name` | block name (blank for polylines) |
+| `Space` | `Model` or `Paper` |
+| `EntityType` | `Block`, `Polyline`, `Line`, `Arc`, `Circle`, `DBText`, `MText` or `Solid` |
+| `Name` | block name; for `DBText`/`MText`, the text content |
+| `BlockDefinition` | resolved definition name (blocks only; dynamic blocks resolve through `DynamicBlockTableRecord`) |
 | `Layer` | object layer |
 | `Handle` | DWG handle, for traceability back to the drawing |
-| `X` `Y` `Z` | insertion point (blocks only) |
-| `Length` | polyline length (polylines only) |
+| `X` `Y` `Z` | insertion point / centre / start point, per type |
+| `Length` | curve length (polyline, line, arc, circle); blank where it has no meaning |
+| `Unit` `UnitCode` | drawing `INSUNITS`, on every row |
 
 ```csv
-Drawing,EntityType,Name,Layer,Handle,X,Y,Z,Length
-Assembly Sample.dwg,Polyline,,0,A4B,,,,306.124
-Assembly Sample.dwg,Block,BLURB,0,A4C,13.500,2.100,0.000,
+Drawing,Space,EntityType,Name,BlockDefinition,Layer,Handle,X,Y,Z,Length,Unit,UnitCode
+Assembly Sample.dwg,Model,Polyline,,,0,A4B,,,,306.124,Inches,1
+Assembly Sample.dwg,Model,Block,BLURB,BLURB,0,A4C,13.500,2.100,0.000,,Inches,1
 ```
 
-Each drawing also gets `Output\_status\<drawing>.ok` or `.fail` containing the row count and
-target file — this is what the runner uses for pass/fail, because Core Console's exit code is
-not reliable.
+### `Output\Extracted_Attributes.csv` — one row per block attribute
+
+| Column | Meaning |
+|---|---|
+| `Drawing` | source DWG file name |
+| `EntityHandle` | handle of the owning block reference — joins to `Extracted_BOM.csv` |
+| `Tag` | attribute tag, verbatim (a tag of `#` occurs in the corpus) |
+| `Value` | attribute text |
+| `IsConstant` | `1` or `0` |
+
+```csv
+Drawing,EntityHandle,Tag,Value,IsConstant
+Assembly Sample.dwg,A4C,PART NO,CE003902,0
+```
+
+Text and attribute values are written on one physical line: a raw newline is rendered as the
+two characters `\n`, so the row count in the file, the status file and the supervisor agree.
+
+Each drawing also gets `Output\_status\<key>.ok` or `.fail` containing a one-line JSON
+verdict — this is what the runner uses for pass/fail, because Core Console's exit code is not
+reliable. The status key is `Stem-<8 hex of SHA256(relative path)>`, so two `Plan.dwg` files
+in different folders cannot collide.
 
 ## How it works
 
 ```
-RunPipeline.bat
-   └─ for each *.dwg in Input_DWGs
-        └─ accoreconsole.exe /i <dwg> /s <generated .scr> /readonly   < nul
-             └─ .scr:  SECURELOAD 0
-                       NETLOAD "…\AEC_Batch_Data_Haravester.dll"
-                       Extract_BOM
-                           └─ Extract_BOM command
-                                ├─ HostApplicationServices.WorkingDatabase
-                                ├─ read-only Transaction → BlockTable → model space
-                                ├─ BlockReference / Polyline  → CSV rows
-                                └─ append to Output\Extracted_BOM.csv
+RunPipeline.bat                         supervisor
+   ├─ build-manifest.ps1                key|path, one line per drawing
+   ├─ for each chunk of AEC_HARVEST_CHUNK drawings
+   │    └─ accoreconsole.exe /i <first> /s <generated .scr> /readonly
+   │         └─ HarvestBatch          (one process, many side databases)
+   │              ├─ read the chunk manifest
+   │              ├─ for each drawing: open as a side database
+   │              │    ├─ read-only Transaction
+   │              │    ├─ model space, then every paper layout
+   │              │    ├─ registry → extractor → entity rows + attribute rows
+   │              │    └─ temp-then-rename both per-drawing files
+   │              └─ write .ok only after the files exist
+   ├─ kill the chunk on AEC_HARVEST_TIMEOUT; mark the in-flight drawing .fail
+   └─ merge-rows.ps1                    only drawings with .ok, sorted, byte-identical
 ```
 
-One process per drawing means a corrupt or crashing DWG cannot take down the batch.
+Chunking exists because AutoCAD startup costs ~1.6 s while the work is ~40–80 ms per drawing:
+opening side databases inside one session amortises the startup. The process boundary stays
+as the isolation layer, so a crash costs at most one chunk, and the per-drawing results
+already published are not lost.
 
 ## Design notes (things that are easy to get wrong)
 
 These were found by testing, not by reading the docs:
 
 1. **A trailing blank line in a `.scr` repeats the last command.** A bare `Enter` at the
-   `Command:` prompt re-runs the previous command, so `Extract_BOM` executed **twice** per
-   drawing — exactly 2× the rows. The script must end without a blank line, and Core Console
-   must be given `stdin` from `NUL` so it does not wait for input forever.
+   `Command:` prompt re-runs the previous command, so the harvest command executed **twice**
+   per drawing — exactly 2× the rows. The script must end without a blank line, and Core
+   Console must be given `stdin` from `NUL` so it does not wait for input forever.
 2. **Core Console swallows managed `Console.WriteLine`.** Its own banner reads
    `StdOutConsoleMode: processed-output: disabled`, and writes from .NET never reach the log.
    Hence the status files.
@@ -131,22 +178,33 @@ These were found by testing, not by reading the docs:
 4. **`/readonly`** — batch harvesting should never be able to modify a source drawing.
 5. **Never reference `AcMgd.dll`** in code that must run in Core Console, and always set
    `Copy Local = false` on `accoremgd` / `acdbmgd` / `acmgd` or AutoCAD crashes on load.
+6. **A side-database drawing has no `Document`.** Layout enumeration goes through the
+   `BlockTable` (`IsLayout`), not `LayoutManager`, which is why paper space works in a batch.
+7. **One bad drawing must be one `.fail`.** The engine catches per drawing; the supervisor
+   kills a hung chunk and blames the drawing named in `_status\_current`, then resume runs
+   only what did not report.
 
 ## Repository layout
 
 ```
 AEC_Batch_Data_Haravester.slnx          solution
 AEC_Batch_Data_Haravester/
-    AEC_Batch_Data_Haravester.csproj    net10.0-windows, x64, AutoCAD refs
-    BomExtractor.cs                     the Extract_BOM command
-RunPipeline.bat                         batch runner (entry point)
-Scripts/RunExtraction.scr               Core Console script (auto-generated)
+    Commands/                           Extract_BOM and HarvestBatch entry points
+    Core/                               rows, options, manifest, timeout verdict (no AutoCAD)
+    Extraction/                         scanner, extractors, runners (AutoCAD only)
+    Output/                             CSV schemas, escaping, temp-then-rename sinks
+    Reporting/                          status JSON, per-drawing files, batch summary
+RunPipeline.bat                         supervisor (entry point)
+Scripts/HarvestBatch.scr                Core Console script (auto-generated)
 Input_DWGs/                             drop drawings here        (git-ignored)
-Output/                                 CSV + status files        (git-ignored)
-Logs/                                   per-drawing logs          (git-ignored)
+Output/                                 CSVs, _rows, _status      (git-ignored)
+Logs/                                   per-chunk logs            (git-ignored)
+tests/Harvest.Checks/                   dependency-free unit checks
+tests/golden/                           frozen output baseline
+tools/                                  manifest, batch supervisor, merge, golden/checks
 docs/autocad-2026/                      study of the ObjectARX 2026 documentation set
 docs/capabilities.md                    measured capability report + known issues
-tools/build-docs-index.ps1              regenerates the documentation indexes
+docs/refactor-plan.md                   the corrective plan and its acceptance evidence
 ```
 
 `docs/autocad-2026/README.md` is a full map of the AutoCAD 2026 / ObjectARX documentation:
@@ -156,16 +214,29 @@ execution-host constraints.
 [`docs/capabilities.md`](docs/capabilities.md) is the honest status report: what is verified,
 what is missing, known issues, measured performance and a prioritised roadmap.
 
+## Tests
+
+```powershell
+dotnet build AEC_Batch_Data_Haravester.slnx
+tests\Harvest.Checks\bin\Debug\net10.0-windows\Harvest.Checks.exe
+
+powershell -File tools\test-batch-engine.ps1      # throughput, isolation, resume, timeout
+powershell -File tools\test-batch-integrity.ps1   # determinism, keys, .ok merge gate
+powershell -File tools\test-failure-paths.ps1     # unreadable DWG, unwritable output, recovery
+powershell -File tools\test-coverage.ps1          # census, attributes, join, paper space
+powershell -File tools\capture-golden.ps1 -SkipRun -Check
+```
+
 ## Roadmap
 
 Prioritised plan, horizons and the decisions still blocking work are in
 **[docs/roadmap.md](docs/roadmap.md)**. The short version:
 
-1. **Block attributes** — turns rows into a real BOM
-2. **Per-drawing timeout** — a hung DWG currently stalls the batch
-3. **Parallel workers** — serial is ~1–2 s per drawing
-4. **Entity coverage** — `Polyline2d/3d`, `Line`, `Arc`, `Table`, `MText`
-5. **Paper space, nested blocks, xrefs** — needed before numbers are trustworthy
+1. **Nested blocks and xrefs** — largest remaining coverage gap
+2. **Parallel chunks** — the engine is cheap; the supervisor is serial
+3. **Dynamic-block fixture** — settles the one untested block case
+4. **More entity types** — `Polyline2d/3d`, `Ellipse`, `Spline`, `Table`
+5. **Structured side output** — JSON/parquet for tooling
 
 ## License
 
