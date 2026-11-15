@@ -501,3 +501,8 @@ docs/autocad-2026/objectarx-toc.csv
 
 # Generated on every run, with a timestamp and an absolute NETLOAD path
 /Scripts/*.scr
+
+# Internal planning documents: kept on disk, deliberately not published
+/docs/capabilities.md
+/docs/refactor-plan.md
+/docs/roadmap.md

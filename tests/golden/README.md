@@ -2,7 +2,7 @@
 
 The reference output of the harvester, captured by `tools/capture-golden.ps1`.
 
-Every phase in [`docs/refactor-plan.md`](../refactor-plan.md) is judged against these files.
+Every phase in the refactor plan is judged against these files.
 They exist so that a refactor cannot silently change what the pipeline produces.
 
 ## What is here

@@ -203,16 +203,11 @@ tests/Harvest.Checks/                   dependency-free unit checks
 tests/golden/                           frozen output baseline
 tools/                                  manifest, batch supervisor, merge, golden/checks
 docs/autocad-2026/                      study of the ObjectARX 2026 documentation set
-docs/capabilities.md                    measured capability report + known issues
-docs/refactor-plan.md                   the corrective plan and its acceptance evidence
 ```
 
 `docs/autocad-2026/README.md` is a full map of the AutoCAD 2026 / ObjectARX documentation:
 45,844 pages indexed, 29 managed namespaces → 18,925 reference pages, plus platform and
 execution-host constraints.
-
-[`docs/capabilities.md`](docs/capabilities.md) is the honest status report: what is verified,
-what is missing, known issues, measured performance and a prioritised roadmap.
 
 ## Tests
 
@@ -229,8 +224,7 @@ powershell -File tools\capture-golden.ps1 -SkipRun -Check
 
 ## Roadmap
 
-Prioritised plan, horizons and the decisions still blocking work are in
-**[docs/roadmap.md](docs/roadmap.md)**. The short version:
+The short version:
 
 1. **Nested blocks and xrefs** — largest remaining coverage gap
 2. **Parallel chunks** — the engine is cheap; the supervisor is serial
