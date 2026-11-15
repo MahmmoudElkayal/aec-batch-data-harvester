@@ -1,16 +1,20 @@
 ﻿using System.Text.Json;
-using AEC_Batch_Data_Haravester;
+using AEC_Batch_Data_Haravester.Core;
+using AEC_Batch_Data_Haravester.Extraction;
+using AEC_Batch_Data_Haravester.Output;
+using AEC_Batch_Data_Haravester.Reporting;
 
 namespace Harvest.Checks
 {
     /// <summary>
-    /// Acceptance checks for the defects Phase 1 fixed. Every one of them is a bug that
-    /// shipped and was invisible until it bit: a broken drawing reported as success, a
-    /// status line that could not be parsed, a schema that could drift from its header.
+    /// Acceptance checks for Phases 1 and 2. Every one of them is a bug that shipped and
+    /// was invisible until it bit: a broken drawing reported as success, a status line that
+    /// could not be parsed, a schema that could drift from its header.
     ///
-    /// These do not need AutoCAD: the guard, the status JSON and the CSV formatting are
-    /// plain C#, reached through InternalsVisibleTo. Anything that does need a Database is
-    /// covered by running the pipeline against the two real hosts instead.
+    /// These do not need AutoCAD. Phase 2 put the schema, the escaping and the status
+    /// payload in Core/, Output/ and Reporting/, none of which references an Autodesk type,
+    /// so a plain console process can exercise them - and the fact that this program runs at
+    /// all is evidence for that separation.
     /// </summary>
     internal static class Program
     {
@@ -24,12 +28,13 @@ namespace Harvest.Checks
                 return SelfTest();
             }
 
-            Console.WriteLine("Harvest.Checks - Phase 1 acceptance");
+            Console.WriteLine("Harvest.Checks - acceptance for Phases 1-2");
             Console.WriteLine();
 
             GuardChecks();
             StatusJsonChecks();
             CsvFormatChecks();
+            FileNameChecks();
             SchemaChecks();
 
             Console.WriteLine();
@@ -69,7 +74,7 @@ namespace Harvest.Checks
 
             Check("success payload parses and carries every field", () =>
             {
-                string json = HarvestFormat.BuildStatusJson(
+                string json = StatusJson.Build(
                     success: true,
                     drawingName: "House Designer.dwg",
                     message: "20 rows, 0 skipped",
@@ -93,7 +98,7 @@ namespace Harvest.Checks
 
             Check("failure payload omits units and reports zero rows", () =>
             {
-                string json = HarvestFormat.BuildStatusJson(
+                string json = StatusJson.Build(
                     success: false,
                     drawingName: "Broken.dwg",
                     message: "AutoCAD error: Drawing file is not valid.",
@@ -119,7 +124,7 @@ namespace Harvest.Checks
                 // happens, because a parse failure looks exactly like a missing file.
                 const string name = "a\"b\\c\nd\te\u0001f.dwg";
 
-                string json = HarvestFormat.BuildStatusJson(
+                string json = StatusJson.Build(
                     success: true, drawingName: name, message: "m", elapsedMs: 1,
                     rows: 1, skipped: 0, unitName: "Millimeters", unitCode: 4);
 
@@ -131,7 +136,7 @@ namespace Harvest.Checks
 
             Check("the payload is a single line", () =>
             {
-                string json = HarvestFormat.BuildStatusJson(
+                string json = StatusJson.Build(
                     success: true, drawingName: "line\nbreak.dwg", message: "m\nmessage",
                     elapsedMs: 0, rows: 0, skipped: 0, unitName: null, unitCode: null);
 
@@ -147,35 +152,47 @@ namespace Harvest.Checks
             Section("CSV formatting");
 
             Check("plain values are not quoted", () =>
-                Expect(HarvestFormat.Escape("Layer 0") == "Layer 0", "unnecessary quoting"));
+                Expect(CsvFormatter.Escape("Layer 0") == "Layer 0", "unnecessary quoting"));
 
             Check("empty stays empty", () =>
-                Expect(HarvestFormat.Escape(string.Empty) == string.Empty, "empty field"));
+                Expect(CsvFormatter.Escape(string.Empty) == string.Empty, "empty field"));
 
             Check("comma forces quoting", () =>
-                Expect(HarvestFormat.Escape("a,b") == "\"a,b\"", "comma not quoted"));
+                Expect(CsvFormatter.Escape("a,b") == "\"a,b\"", "comma not quoted"));
 
             Check("quote is doubled", () =>
-                Expect(HarvestFormat.Escape("6\" pipe") == "\"6\"\" pipe\"", "quote not doubled"));
+                Expect(CsvFormatter.Escape("6\" pipe") == "\"6\"\" pipe\"", "quote not doubled"));
 
             Check("newline forces quoting", () =>
-                Expect(HarvestFormat.Escape("a\nb") == "\"a\nb\"", "newline not quoted"));
+                Expect(CsvFormatter.Escape("a\nb") == "\"a\nb\"", "newline not quoted"));
 
             Check("numbers are invariant with three decimals", () =>
-                Expect(HarvestFormat.Number(null) == string.Empty, "null number")
-                ?? Expect(HarvestFormat.Number(0) == "0.000", "zero")
-                ?? Expect(HarvestFormat.Number(1.5) == "1.500", "1.5")
-                ?? Expect(HarvestFormat.Number(-2.25) == "-2.250", "-2.25")
-                ?? Expect(HarvestFormat.Number(1234.5678) == "1234.568", "rounding"));
+                Expect(CsvFormatter.Number(null) == string.Empty, "null number")
+                ?? Expect(CsvFormatter.Number(0) == "0.000", "zero")
+                ?? Expect(CsvFormatter.Number(1.5) == "1.500", "1.5")
+                ?? Expect(CsvFormatter.Number(-2.25) == "-2.250", "-2.25")
+                ?? Expect(CsvFormatter.Number(1234.5678) == "1234.568", "rounding"));
+        }
 
-            Check("status file names drop illegal characters", () =>
+        // ------------------------------------------------------------- file names
+
+        private static void FileNameChecks()
+        {
+            Section("status keys");
+
+            Check("illegal characters are replaced", () =>
             {
-                string cleaned = HarvestFormat.SanitizeFileName("a<b>c:d|e");
+                string cleaned = FileNames.Sanitize("a<b>c:d|e");
                 bool invalidLeft = cleaned.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0;
 
                 return Expect(!invalidLeft, "illegal character survived: " + cleaned)
-                    ?? Expect(HarvestFormat.SanitizeFileName("   ") == "drawing", "empty name fallback");
+                    ?? Expect(FileNames.Sanitize("   ") == "drawing", "empty name fallback");
             });
+
+            Check("the key drops the extension and the folder", () =>
+                Expect(FileNames.StatusKey(@"C:\Folder A\House Designer.dwg") == "House Designer",
+                    "key derivation")
+                ?? Expect(FileNames.StatusKey("Plan.dwg") == "Plan", "bare name"));
         }
 
         // ----------------------------------------------------------------- schema
@@ -184,9 +201,11 @@ namespace Harvest.Checks
         {
             Section("CSV schema");
 
+            var formatter = new CsvFormatter();
+
             Check("header is unique and non-empty", () =>
             {
-                string[] header = HarvestFormat.CsvHeader;
+                string[] header = CsvFormatter.ColumnNames();
 
                 if (header.Length == 0) { return "header is empty"; }
                 if (header.Any(string.IsNullOrWhiteSpace)) { return "a column name is blank"; }
@@ -199,18 +218,18 @@ namespace Harvest.Checks
 
             Check("a row has exactly one field per column", () =>
             {
-                string row = HarvestFormat.Row(
-                    drawing: "Drawing, with comma.dwg", space: "Model", entityType: "Block",
-                    name: "Bath Tub - 26 x 60 in.", blockDefinition: "Bath Tub - 26 x 60 in.",
-                    layer: "0", handle: "47", x: 20.593, y: 287.084, z: 0.0, length: null,
-                    unit: "Inches", unitCode: 1);
+                var row = new HarvestRow(
+                    Drawing: "Drawing, with comma.dwg", Space: "Model", EntityType: "Block",
+                    Name: "Bath Tub - 26 x 60 in.", BlockDefinition: "Bath Tub - 26 x 60 in.",
+                    Layer: "0", Handle: "47", X: 20.593, Y: 287.084, Z: 0.0, Length: null,
+                    Unit: "Inches", UnitCode: 1);
 
-                string[] fields = SplitCsv(row);
-                int expected = HarvestFormat.CsvHeader.Length;
+                string[] fields = SplitCsv(formatter.Row(row));
+                int expected = CsvFormatter.ColumnNames().Length;
 
                 if (fields.Length != expected)
                 {
-                    return $"row has {fields.Length} fields, header has {expected}: {row}";
+                    return $"row has {fields.Length} fields, header has {expected}";
                 }
 
                 return Expect(fields[0] == "Drawing, with comma.dwg", "drawing field")
@@ -230,20 +249,33 @@ namespace Harvest.Checks
 
             Check("a polyline row leaves the block fields blank", () =>
             {
-                string row = HarvestFormat.Row(
-                    drawing: "D.dwg", space: "Model", entityType: "Polyline",
-                    name: string.Empty, blockDefinition: string.Empty, layer: "102",
-                    handle: "A50", x: null, y: null, z: null, length: 306.124,
-                    unit: "Undefined", unitCode: 0);
+                var row = new HarvestRow(
+                    Drawing: "D.dwg", Space: "Model", EntityType: "Polyline",
+                    Name: string.Empty, BlockDefinition: string.Empty, Layer: "102",
+                    Handle: "A50", X: null, Y: null, Z: null, Length: 306.124,
+                    Unit: "Undefined", UnitCode: 0);
 
-                string[] fields = SplitCsv(row);
+                string[] fields = SplitCsv(formatter.Row(row));
 
-                return Expect(fields.Length == HarvestFormat.CsvHeader.Length, "field count")
+                return Expect(fields.Length == CsvFormatter.ColumnNames().Length, "field count")
                     ?? Expect(fields[3] == string.Empty, "name must be blank")
                     ?? Expect(fields[4] == string.Empty, "definition must be blank")
                     ?? Expect(fields[7] == string.Empty, "X must be blank")
                     ?? Expect(fields[10] == "306.124", "length")
                     ?? Expect(fields[12] == "0", "unit code");
+            });
+
+            Check("header and row use the same column list", () =>
+            {
+                var row = new HarvestRow(
+                    "D.dwg", "Model", "Line", "", "", "0", "1", 0, 0, 0, 1, "Inches", 1);
+
+                string[] header = SplitCsv(formatter.Header);
+                string[] values = SplitCsv(formatter.Row(row));
+
+                return Expect(header.SequenceEqual(CsvFormatter.ColumnNames()),
+                        "Header disagrees with ColumnNames()")
+                    ?? Expect(header.Length == values.Length, "header/row length mismatch");
             });
         }
 
