@@ -31,6 +31,23 @@ namespace AEC_Batch_Data_Haravester
     }
 
     /// <summary>
+    /// The policy for an unresolved model space, isolated from AutoCAD types so it can be
+    /// tested. A broken drawing must fail loudly: returning no rows would make it look
+    /// exactly like an empty drawing, and the batch would report success.
+    /// </summary>
+    internal static class ModelSpaceGuard
+    {
+        internal static void EnsureResolved(bool isNull, string drawingName)
+        {
+            if (isNull)
+            {
+                throw new InvalidOperationException(
+                    "model space id could not be resolved for '" + drawingName + "'");
+            }
+        }
+    }
+
+    /// <summary>
     /// Harvests a flat entity table from the drawing that is currently loaded.
     ///
     /// Design constraints (see docs/autocad-2026/batch-harvester-notes.md):
@@ -59,17 +76,8 @@ namespace AEC_Batch_Data_Haravester
         public const string DoneMarker = "[AEC] DONE";
         public const string FailMarker = "[AEC] FAIL";
 
-        private const string NumericFormat = "0.000";
-
         /// <summary>Model space today. Paper space arrives in Phase 5 without a schema change.</summary>
         private const string ModelSpaceLabel = "Model";
-
-        // One source of truth for order: Row() below must emit these in this sequence.
-        private static readonly string[] CsvHeader =
-        {
-            "Drawing", "Space", "EntityType", "Name", "BlockDefinition", "Layer", "Handle",
-            "X", "Y", "Z", "Length", "Unit", "UnitCode"
-        };
 
         private static readonly IModelSpaceResolver DefaultResolver = new SymbolModelSpaceResolver();
 
@@ -157,11 +165,7 @@ namespace AEC_Batch_Data_Haravester
             int unitCode = (int)db.Insunits;
 
             ObjectId modelSpaceId = resolver.Resolve(db);
-            if (modelSpaceId.IsNull)
-            {
-                throw new InvalidOperationException(
-                    "model space id could not be resolved for '" + drawingName + "'");
-            }
+            ModelSpaceGuard.EnsureResolved(modelSpaceId.IsNull, drawingName);
 
             using Transaction tr = db.TransactionManager.StartTransaction();
 
@@ -202,7 +206,7 @@ namespace AEC_Batch_Data_Haravester
                 {
                     // Placed block (mechanical equipment, furniture, doors, ...).
                     case BlockReference block:
-                        rows.Add(Row(
+                        rows.Add(HarvestFormat.Row(
                             drawingName, ModelSpaceLabel, "Block", block.Name,
                             BlockDefinitionName(tr, block), block.Layer,
                             block.Handle.ToString(),
@@ -212,7 +216,7 @@ namespace AEC_Batch_Data_Haravester
 
                     // Lightweight polyline (LWPOLYLINE) - walls, runs, routes.
                     case Polyline polyline:
-                        rows.Add(Row(
+                        rows.Add(HarvestFormat.Row(
                             drawingName, ModelSpaceLabel, "Polyline", string.Empty,
                             string.Empty, polyline.Layer,
                             polyline.Handle.ToString(),
@@ -268,30 +272,6 @@ namespace AEC_Batch_Data_Haravester
             }
         }
 
-        private static string Row(
-            string drawing, string space, string entityType, string name,
-            string blockDefinition, string layer, string handle,
-            double? x, double? y, double? z, double? length,
-            string unit, int unitCode)
-        {
-            return string.Join(",", new[]
-            {
-                Escape(drawing),
-                Escape(space),
-                Escape(entityType),
-                Escape(name),
-                Escape(blockDefinition),
-                Escape(layer),
-                Escape(handle),
-                Number(x),
-                Number(y),
-                Number(z),
-                Number(length),
-                Escape(unit),
-                unitCode.ToString(CultureInfo.InvariantCulture)
-            });
-        }
-
         /// <summary>Writes the header once, then appends one row per extracted entity.</summary>
         private static string AppendRows(List<string> rows)
         {
@@ -309,7 +289,7 @@ namespace AEC_Batch_Data_Haravester
             {
                 if (needsHeader)
                 {
-                    writer.WriteLine(string.Join(",", CsvHeader));
+                    writer.WriteLine(string.Join(",", HarvestFormat.CsvHeader));
                 }
 
                 foreach (string row in rows)
@@ -344,27 +324,6 @@ namespace AEC_Batch_Data_Haravester
                 ?? Directory.GetCurrentDirectory();
 
             return Path.Combine(assemblyDirectory, "Output");
-        }
-
-        private static string Number(double? value)
-        {
-            return value.HasValue
-                ? value.Value.ToString(NumericFormat, CultureInfo.InvariantCulture)
-                : string.Empty;
-        }
-
-        /// <summary>Minimal RFC 4180 quoting for values that contain , or " or a newline.</summary>
-        private static string Escape(string value)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                return string.Empty;
-            }
-
-            bool mustQuote = value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) >= 0;
-            return mustQuote
-                ? "\"" + value.Replace("\"", "\"\"") + "\""
-                : value;
         }
 
         /// <summary>
@@ -411,15 +370,16 @@ namespace AEC_Batch_Data_Haravester
                 string statusFolder = Path.Combine(ResolveOutputFolder(), StatusFolderName);
                 Directory.CreateDirectory(statusFolder);
 
-                string stem = SanitizeFileName(Path.GetFileNameWithoutExtension(drawingName));
+                string stem = HarvestFormat.SanitizeFileName(Path.GetFileNameWithoutExtension(drawingName));
                 string okPath = Path.Combine(statusFolder, stem + ".ok");
                 string failPath = Path.Combine(statusFolder, stem + ".fail");
 
                 // A re-run must not leave the previous verdict lying next to the new one.
                 TryDelete(success ? failPath : okPath);
 
-                string json = BuildStatusJson(
-                    success, drawingName, message, elapsedMs, rows, skipped, units);
+                string json = HarvestFormat.BuildStatusJson(
+                    success, drawingName, message, elapsedMs, rows, skipped,
+                    units?.ToString(), units.HasValue ? (int?)units.Value : null);
 
                 File.WriteAllText(success ? okPath : failPath, json);
 
@@ -452,68 +412,6 @@ namespace AEC_Batch_Data_Haravester
             }
         }
 
-        private static string BuildStatusJson(
-            bool success,
-            string drawingName,
-            string message,
-            long elapsedMs,
-            int rows,
-            int skipped,
-            UnitsValue? units)
-        {
-            var sb = new StringBuilder(256);
-
-            sb.Append('{');
-            sb.Append("\"ok\":").Append(success ? "true" : "false");
-            sb.Append(",\"drawing\":\"").Append(JsonEscape(drawingName)).Append('"');
-            sb.Append(",\"rows\":").Append(rows.ToString(CultureInfo.InvariantCulture));
-            sb.Append(",\"skipped\":").Append(skipped.ToString(CultureInfo.InvariantCulture));
-
-            if (units.HasValue)
-            {
-                sb.Append(",\"units\":\"").Append(JsonEscape(units.Value.ToString())).Append('"');
-                sb.Append(",\"unitCode\":").Append(((int)units.Value).ToString(CultureInfo.InvariantCulture));
-            }
-
-            sb.Append(",\"ms\":").Append(elapsedMs.ToString(CultureInfo.InvariantCulture));
-            sb.Append(",\"message\":\"").Append(JsonEscape(message)).Append('"');
-            sb.Append('}');
-
-            return sb.ToString();
-        }
-
-        /// <summary>Escapes the five characters JSON requires, plus control characters.</summary>
-        private static string JsonEscape(string value)
-        {
-            var sb = new StringBuilder(value.Length + 8);
-
-            foreach (char c in value)
-            {
-                switch (c)
-                {
-                    case '"': sb.Append("\\\""); break;
-                    case '\\': sb.Append("\\\\"); break;
-                    case '\b': sb.Append("\\b"); break;
-                    case '\f': sb.Append("\\f"); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (c < ' ')
-                        {
-                            sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
-                        }
-                        else
-                        {
-                            sb.Append(c);
-                        }
-                        break;
-                }
-            }
-
-            return sb.ToString();
-        }
-
         private static void TryDelete(string path)
         {
             try
@@ -531,19 +429,5 @@ namespace AEC_Batch_Data_Haravester
             }
         }
 
-        /// <summary>Drawing name -> a legal Windows file name stem.</summary>
-        private static string SanitizeFileName(string name)
-        {
-            char[] invalid = Path.GetInvalidFileNameChars();
-            var builder = new StringBuilder(name.Length);
-
-            foreach (char c in name)
-            {
-                builder.Append(Array.IndexOf(invalid, c) >= 0 ? '_' : c);
-            }
-
-            string result = builder.ToString().Trim();
-            return string.IsNullOrEmpty(result) ? "drawing" : result;
-        }
     }
 }

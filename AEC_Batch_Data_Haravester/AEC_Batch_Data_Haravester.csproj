@@ -15,6 +15,15 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!--
+      The checks project exercises the pure logic (model-space guard, status JSON, CSV
+      escaping) with no AutoCAD runtime, so those members are internal rather than public.
+      They stay internal to the shipping assembly: nothing here is part of the plug-in API.
+    -->
+		<InternalsVisibleTo Include="Harvest.Checks" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<Reference Include="accoremgd">
 			<HintPath>$(AcadDir)accoremgd.dll</HintPath>
 			<!-- Critical: Prevents the DLL from copying to your bin folder and crashing AutoCAD -->

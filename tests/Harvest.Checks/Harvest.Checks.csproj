@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!--
+      Acceptance checks for Phase 1 of docs/refactor-plan.md.
+
+      A plain console program, not a test framework: `dotnet restore` for xunit/mstest
+      hangs on this machine (no working NuGet feed), and a test harness that cannot run is
+      worse than none. Everything here uses the shared framework only, so it builds and
+      runs offline. Exit code 0 = all checks passed, 1 = something failed.
+    -->
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<PlatformTarget>x64</PlatformTarget>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<AssemblyName>Harvest.Checks</AssemblyName>
+		<RootNamespace>Harvest.Checks</RootNamespace>
+		<AcadDir Condition="'$(AcadDir)' == ''">C:\Program Files\Autodesk\AutoCAD 2026\</AcadDir>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\AEC_Batch_Data_Haravester\AEC_Batch_Data_Haravester.csproj" />
+	</ItemGroup>
+
+</Project>
