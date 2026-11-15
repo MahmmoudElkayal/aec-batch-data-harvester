@@ -1,6 +1,6 @@
 # test-failure-paths.ps1 - prove the pipeline fails loudly when it should
 #
-# Phase 1 of docs/refactor-plan.md. The defects being guarded against all shared one shape:
+# Phase 1 of the hardening work. The defects being guarded against all shared one shape:
 # the pipeline reported success when it had not succeeded.
 #
 # Three modes, each expected to be detected by RunPipeline.bat rather than by a human

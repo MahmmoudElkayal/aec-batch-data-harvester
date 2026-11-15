@@ -31,6 +31,10 @@ Working notes derived from the AutoCAD 2026 ObjectARX documentation
 
 ## 2. Candidate architectures
 
+**Chosen: A at the process boundary, B inside each process.** `RunPipeline.bat` starts one
+`accoreconsole.exe` per chunk of drawings (default 50) and loops the side-database harvester
+inside it, so start-up is amortised while a crash still costs only one chunk.
+
 **A. Core Console batch runner (recommended first)**
 `harvester.exe` (orchestrator) → one `accoreconsole.exe` process per DWG → `NETLOAD`/`/loadmodule`
 of `AEC_Batch_Data_Haravester.dll` → command writes a per-drawing result (JSON/CSV row) → orchestrator
@@ -64,16 +68,31 @@ output (matches `DATAEXTRACTION`), but less control over schema/flattening.
   `Autodesk.AutoCAD.Runtime.Exception` (`ErrorStatus`) separately.
 - Dispose every `Transaction` and side `Database`; commit writes only when intentional.
 
-## 4. Open questions (need answers before coding)
+## 4. Decisions (these were open questions before coding)
 
-1. **Which AutoCAD?** Vanilla AutoCAD 2026.1.2+, or an AEC vertical (Architecture/MEP/Civil 3D)?
-   If AEC, we need the vertical SDK + Object Enablers — they are *not* in ObjectARX 2026 docs.
-2. **What data exactly?** Blocks + attributes only, or also tables, xdata/xrecords, layers, layouts,
-   dynamic block properties, AEC property sets?
-3. **Where does it run?** Desktop AutoCAD command, `accoreconsole` on a server, or standalone
-   (RealDWG)?
-4. **Output shape?** One flat table per drawing, a normalized relational schema, or JSON per drawing?
-5. **Scale/parallelism?** How many DWGs, and is parallel `accoreconsole` allowed (license/CPU)?
-6. **Read-only guarantee?** Should the tool ever modify source DWGs? (`/readonly` + side DB says no.)
-7. **Do we ship a `.dbx`** so other hosts (DWG TrueView, Revit-era tools) can read our custom data?
-8. **Do we need to evaluate DXE first** rather than build a bespoke extractor?
+1. **Which AutoCAD?** Vanilla AutoCAD 2026 Update 1.2+ (`25.1`). The managed AEC API is not
+   installed here, so vertical objects arrive as proxies and are skipped rather than half-read.
+2. **What data exactly?** Every entity in the corpus census — `Block` (with attributes),
+   `Polyline`, `Line`, `Arc`, `Circle`, `DBText`, `MText`, `Solid` — in model and paper space.
+   Tables, xdata/xrecords, layers and dynamic-block properties are not extracted yet; dynamic
+   block references do resolve their definition through `DynamicBlockTableRecord`.
+3. **Where does it run?** Both: `accoreconsole.exe` for unattended batches, and `NETLOAD` +
+   `Extract_BOM` inside desktop AutoCAD for a single drawing. No RealDWG.
+4. **Output shape?** One flat CSV per drawing for entities plus one long-format CSV for
+   attributes, merged in a deterministic order. JSON/parquet were deferred.
+5. **Scale/parallelism?** Serial chunks of 50 drawings per process (300 s timeout) for now;
+   parallel `accoreconsole` processes are the next scale step, not yet implemented.
+6. **Read-only guarantee?** Yes, always: `/readonly`, read-only transactions on side databases,
+   and no code path opens the source drawing for write.
+7. **Do we ship a `.dbx`?** No. The plug-in is a managed command assembly, loaded by `NETLOAD`.
+8. **DXE or bespoke extractor?** Bespoke. A registry of per-type extractors gives control over
+   the flat schema, and the measured cost (39–77 ms per drawing) is well inside the batch budget.
+
+## 5. Where the shipped code diverges from this note
+
+- The process boundary is a **chunk**, not a single drawing: one Core Console process harvests
+  up to `AEC_HARVEST_CHUNK` drawings, which cuts start-up from ~1.6 s to ~40 ms per drawing.
+- Core Console exit codes proved unreliable, so pass/fail comes from per-drawing status files
+  (`_status\<key>.ok|.fail`, key = `Stem-<8 hex SHA256(relative path)>`), written temp-then-rename.
+- `SECURELOAD 0` is set in the generated script for development; production should instead put
+  the DLL under `TRUSTEDPATHS`.

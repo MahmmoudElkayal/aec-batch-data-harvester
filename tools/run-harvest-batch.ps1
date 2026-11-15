@@ -1,6 +1,6 @@
 # run-harvest-batch.ps1 - process supervision for the batch engine
 #
-# Phase 4 of docs/refactor-plan.md. The engine (HarvestBatch) harvests a chunk of
+# Phase 4 of the hardening work. The engine (HarvestBatch) harvests a chunk of
 # drawings in one accoreconsole session, each opened as a side database, and isolates
 # every drawing's failure itself. What it cannot do is survive its own death - an access
 # violation, a stack overflow, or a drawing that never returns. That is this script's job:

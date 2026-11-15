@@ -1,6 +1,6 @@
 # merge-rows.ps1 - the merged CSVs from the per-drawing files
 #
-# Phase 3 of docs/refactor-plan.md, extended in Phase 5 for the attribute file.
+# Phase 3 of the hardening work, extended in Phase 5 for the attribute file.
 # Every drawing writes two standalone files:
 #
 #   Output\_rows\<key>.csv              one row per entity

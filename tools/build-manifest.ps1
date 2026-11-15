@@ -1,6 +1,6 @@
 # build-manifest.ps1 - the one place that names a drawing's files
 #
-# Phase 3 of docs/refactor-plan.md. Two rules, both learned the hard way:
+# Phase 3 of the hardening work. Two rules, both learned the hard way:
 #
 #  1. The supervisor owns the key. The plugin reads AEC_HARVEST_KEY verbatim and never
 #     derives a name, so there is exactly one implementation of "which files belong to

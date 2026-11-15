@@ -1,6 +1,6 @@
 # capture-golden.ps1 - freeze the harvester's current output as the reference baseline
 #
-# Phase 0 of docs/refactor-plan.md. Every later phase is judged by diffing its output
+# Phase 0 of the hardening work. Every later phase is judged by diffing its output
 # against these files, so this script must be boring and deterministic:
 #   * it runs the real pipeline (no shortcuts, no fake data)
 #   * it splits each merged CSV by the Drawing column, preserving row order

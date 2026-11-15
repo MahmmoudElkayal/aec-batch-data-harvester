@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<!--
-      Acceptance checks for Phase 1 of docs/refactor-plan.md.
+      Acceptance checks for the Phase 1 correctness fixes.
 
       A plain console program, not a test framework: `dotnet restore` for xunit/mstest
       hangs on this machine (no working NuGet feed), and a test harness that cannot run is

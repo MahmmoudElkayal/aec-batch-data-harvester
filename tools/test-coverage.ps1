@@ -62,7 +62,7 @@ function Invoke-Pipeline([string[]] $Flags = @()) {
 }
 
 # ------------------------------------------------------------------ the census
-# Extracted from docs/refactor-plan.md section 0.2 and re-checked against the drawings.
+# Corpus census, re-checked against the drawings.
 $census = @{
     'Assembly Sample.dwg|Block'    = 46
     'Assembly Sample.dwg|Polyline' = 582
