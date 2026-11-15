@@ -96,3 +96,8 @@ output (matches `DATAEXTRACTION`), but less control over schema/flattening.
   (`_status\<key>.ok|.fail`, key = `Stem-<8 hex SHA256(relative path)>`), written temp-then-rename.
 - `SECURELOAD 0` is set in the generated script for development; production should instead put
   the DLL under `TRUSTEDPATHS`.
+- Every verdict now carries `schema` and `tool`, and `/append` rejects a verdict written under
+  another schema instead of merging two extraction rules into one CSV.
+- Entity classes with no extractor are counted by DXF name (`unsupported`,
+  `unsupportedTotal`) rather than skipped silently; the sample corpus reports
+  `VIEWPORT=8`. Sources and the remaining work are in `harvest-api-research.md`.

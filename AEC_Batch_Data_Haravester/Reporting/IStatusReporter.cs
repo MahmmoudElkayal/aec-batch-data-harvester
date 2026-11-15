@@ -1,4 +1,6 @@
-﻿namespace AEC_Batch_Data_Haravester.Reporting
+﻿using System.Collections.Generic;
+
+namespace AEC_Batch_Data_Haravester.Reporting
 {
     /// <summary>
     /// How one drawing's outcome is published. An interface because the supervisor's
@@ -9,7 +11,9 @@
     {
         void Success(
             string drawingName, string message, long elapsedMs,
-            int rows, int attributes, int skipped, string? unitName, int? unitCode);
+            int rows, int attributes, int skipped,
+            IReadOnlyDictionary<string, int>? unsupported,
+            string? unitName, int? unitCode);
 
         void Failure(string drawingName, string message, string? detail, long elapsedMs);
     }

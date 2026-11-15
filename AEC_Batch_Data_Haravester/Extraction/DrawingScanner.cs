@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Runtime;
 using AEC_Batch_Data_Haravester.Core;
 using AEC_Batch_Data_Haravester.Output;
 using AcException = Autodesk.AutoCAD.Runtime.Exception;
@@ -45,6 +46,8 @@ namespace AEC_Batch_Data_Haravester.Extraction
             ObjectId modelSpaceId = _resolver.Resolve(db);
             ModelSpaceGuard.EnsureResolved(modelSpaceId.IsNull, drawingName);
 
+            var unsupported = new UnsupportedEntities();
+
             using Transaction tr = db.TransactionManager.StartTransaction();
 
             if (tr.GetObject(modelSpaceId, OpenMode.ForRead) is not BlockTableRecord modelSpace)
@@ -54,7 +57,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
             }
 
             SpaceTotals totals = ScanSpace(
-                modelSpace, ModelSpaceLabel, tr, drawingName, unit, unitCode, sink);
+                modelSpace, ModelSpaceLabel, tr, drawingName, unit, unitCode, sink, unsupported);
 
             // Every paper layout is a BlockTableRecord flagged IsLayout. Enumerating the
             // block table needs no document or LayoutManager, which matters because the
@@ -79,12 +82,13 @@ namespace AEC_Batch_Data_Haravester.Extraction
                     }
 
                     totals += ScanSpace(
-                        space, PaperSpaceLabel, tr, drawingName, unit, unitCode, sink);
+                        space, PaperSpaceLabel, tr, drawingName, unit, unitCode, sink, unsupported);
                 }
             }
 
             return new HarvestResult(
-                totals.Rows, totals.Attributes, totals.Skipped, unit, unitCode);
+                totals.Rows, totals.Attributes, totals.Skipped, unit, unitCode,
+                unsupported.ToSortedDictionary());
         }
 
         private SpaceTotals ScanSpace(
@@ -94,7 +98,8 @@ namespace AEC_Batch_Data_Haravester.Extraction
             string drawingName,
             string unit,
             int unitCode,
-            IRowSink sink)
+            IRowSink sink,
+            UnsupportedEntities unsupported)
         {
             var context = new HarvestContext(tr, drawingName, spaceLabel, unit, unitCode);
             var rowBuffer = new List<HarvestRow>(1);
@@ -116,21 +121,36 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 // common data and - for a proxy - may fail. On a drawing full of hatches
                 // or dimensions, every unsupported entity used to pay that read for no
                 // result. The registry is consulted first so only supported classes are
-                // opened at all.
+                // opened at all - and every class it does not know is counted, because
+                // otherwise "nothing here" and "nothing we can read" look identical.
+                RXClass entityClass;
+                try
+                {
+                    entityClass = id.ObjectClass;
+                }
+                catch (AcException)
+                {
+                    unsupported.Add(UnsupportedEntities.UnresolvedClass);
+                    skipped++;
+                    continue;
+                }
+
                 IEntityExtractor? extractor;
                 try
                 {
-                    extractor = _registry.Resolve(id.ObjectClass);
+                    extractor = _registry.Resolve(entityClass);
                 }
                 catch (AcException)
                 {
                     // An object whose class cannot even be resolved is not readable.
+                    unsupported.Add(ClassKey(entityClass));
                     skipped++;
                     continue;
                 }
 
                 if (extractor is null)
                 {
+                    unsupported.Add(ClassKey(entityClass));
                     continue;
                 }
 
@@ -179,6 +199,18 @@ namespace AEC_Batch_Data_Haravester.Extraction
             }
 
             return new SpaceTotals(written, attributes, skipped);
+        }
+
+        /// <summary>
+        /// The name a person would use for the entity: the DXF name ("HATCH", "DIMENSION",
+        /// "ACAD_PROXY_ENTITY"), falling back to the .NET class name for classes that do
+        /// not publish one. DXF names are stable across releases and match the entity list
+        /// in the drawing, which is what makes the census actionable.
+        /// </summary>
+        private static string ClassKey(RXClass entityClass)
+        {
+            string? dxf = entityClass.DxfName;
+            return string.IsNullOrWhiteSpace(dxf) ? entityClass.Name : dxf!;
         }
 
         private readonly struct SpaceTotals

@@ -58,13 +58,14 @@ namespace AEC_Batch_Data_Haravester.Extraction
                     drawingName,
                     string.Format(
                         CultureInfo.InvariantCulture,
-                        "{0} rows, {1} attributes, {2} skipped from {3} -> {4}",
+                        "{0} rows, {1} attributes, {2} skipped, {3} unsupported from {4} -> {5}",
                         result.RowsWritten, result.AttributesWritten, result.Skipped,
-                        drawingName, sink.Path),
+                        result.UnsupportedTotal, drawingName, sink.Path),
                     stopwatch.ElapsedMilliseconds,
                     result.RowsWritten,
                     result.AttributesWritten,
                     result.Skipped,
+                    result.Unsupported,
                     db.Insunits.ToString(),
                     (int)db.Insunits);
             }

@@ -12,6 +12,8 @@
 		<RootNamespace>AEC_Batch_Data_Haravester</RootNamespace>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<!-- Read into the status file as "tool". Keep in step with the release tag. -->
+		<Version>0.5.0</Version>
 	</PropertyGroup>
 
 	<ItemGroup>

@@ -63,21 +63,22 @@ namespace AEC_Batch_Data_Haravester.Extraction
                         Path.GetFileName(entry.Path),
                         string.Format(
                             CultureInfo.InvariantCulture,
-                            "{0} rows, {1} attributes, {2} skipped from {3}",
+                            "{0} rows, {1} attributes, {2} skipped, {3} unsupported from {4}",
                             result.RowsWritten, result.AttributesWritten, result.Skipped,
-                            Path.GetFileName(entry.Path)),
+                            result.UnsupportedTotal, Path.GetFileName(entry.Path)),
                         stopwatch.ElapsedMilliseconds,
                         result.RowsWritten,
                         result.AttributesWritten,
                         result.Skipped,
+                        result.Unsupported,
                         result.Unit,
                         result.UnitCode);
 
                     Console.WriteLine(string.Format(
                         CultureInfo.InvariantCulture,
-                        "[AEC] {0}: {1} rows, {2} attributes in {3} ms",
+                        "[AEC] {0}: {1} rows, {2} attributes, {3} unsupported in {4} ms",
                         entry.Key, result.RowsWritten, result.AttributesWritten,
-                        stopwatch.ElapsedMilliseconds));
+                        result.UnsupportedTotal, stopwatch.ElapsedMilliseconds));
 
                     ok++;
                 }

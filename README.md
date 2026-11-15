@@ -136,7 +136,24 @@ two characters `\n`, so the row count in the file, the status file and the super
 Each drawing also gets `Output\_status\<key>.ok` or `.fail` containing a one-line JSON
 verdict — this is what the runner uses for pass/fail, because Core Console's exit code is not
 reliable. The status key is `Stem-<8 hex of SHA256(relative path)>`, so two `Plan.dwg` files
-in different folders cannot collide.
+in different folders cannot collide. The verdict also carries `schema` and `tool`, and
+`/append` refuses a verdict whose `schema` differs from the engine's: a drawing extracted
+under older rules is re-run, never merged with new rows under a silent assumption.
+
+### Coverage — what was *not* extracted
+
+The CSV contains only what the registry knows how to read. The status file says what it does
+not:
+
+```json
+"unsupported":{"VIEWPORT":2},"unsupportedTotal":2
+```
+
+`VIEWPORT`, `HATCH`, `DIMENSION`, `ACAD_PROXY_ENTITY` and every other class without an
+extractor are counted by DXF name, and the runner prints the corpus-wide totals as
+`Skipped : VIEWPORT=8`. Without that line, a drawing full of unsupported geometry is
+indistinguishable from an empty one. The sample corpus currently reports eight viewports
+and nothing else.
 
 ## How it works
 
@@ -183,6 +200,12 @@ These were found by testing, not by reading the docs:
 7. **One bad drawing must be one `.fail`.** The engine catches per drawing; the supervisor
    kills a hung chunk and blames the drawing named in `_status\_current`, then resume runs
    only what did not report.
+8. **A constant attribute is not on the block reference.** AutoCAD creates no `Attribute`
+   for it — the definition is used for every insertion (bit 2 of DXF group 70). Reading only
+   `BlockReference.AttributeCollection` drops every constant value; the definition's
+   `AttributeDefinition`s with `Constant = true` must be read too.
+9. **`MText.Text`, not `MText.Contents`.** `Contents` carries the formatting codes; `Text`
+   is documented as "the contents with formatting removed".
 
 ## Repository layout
 
@@ -202,7 +225,8 @@ Logs/                                   per-chunk logs            (git-ignored)
 tests/Harvest.Checks/                   dependency-free unit checks
 tests/golden/                           frozen output baseline
 tools/                                  manifest, batch supervisor, merge, golden/checks
-docs/autocad-2026/                      study of the ObjectARX 2026 documentation set
+docs/autocad-2026/                      study of the ObjectARX 2026 documentation set, plus
+                                        harvest-api-research.md (sources behind each gap)
 ```
 
 `docs/autocad-2026/README.md` is a full map of the AutoCAD 2026 / ObjectARX documentation:
@@ -226,11 +250,17 @@ powershell -File tools\capture-golden.ps1 -SkipRun -Check
 
 The short version:
 
-1. **Nested blocks and xrefs** — largest remaining coverage gap
-2. **Parallel chunks** — the engine is cheap; the supervisor is serial
-3. **Dynamic-block fixture** — settles the one untested block case
-4. **More entity types** — `Polyline2d/3d`, `Ellipse`, `Spline`, `Table`
-5. **Structured side output** — JSON/parquet for tooling
+1. **Nested blocks and xrefs** — largest remaining coverage gap; recursion needs
+   `BlockTransform` composition, a visited set and a depth cap, and xref rows need
+   `IsFromExternalReference`
+2. **Parallel chunks** — multiple `accoreconsole` processes are a documented pattern; the
+   supervisor first needs per-chunk timeout markers
+3. **One `Curve` fallback** — catches `Polyline2d/3d`, `Ellipse`, `Spline`, `Ray` and
+   `Xline` in one extractor, because the registry already matches by inheritance
+4. **Area** — `Curve.Area` and `Hatch.Area` behind a new column, which is where takeoff
+   actually lives
+5. **Dynamic-block fixture** — settles the one untested block case
+6. **Structured side output** — JSON/parquet for tooling
 
 ## License
 

@@ -9,10 +9,13 @@
 #   3. every attribute handle resolves in the entity file (the join actually works)
 #   4. paper space is traversed - proved with a fixture, because the sample corpus only
 #      has viewports there and a zero-row assertion would pass even if it were ignored
+#   5. the status file tells the truth: it names the output schema, counts an unsupported
+#      RAY by class, and carries a constant attribute read from the block definition
 #
-# A fifth, source-level check proves the plan's "one class + one registration line"
+# A source-level check proves the plan's "one class + one registration line"
 # property by matching every EntityKind to exactly one extractor and every extractor to
-# the registry.
+# the registry. It also proves the engine and the supervisor agree on the schema number,
+# because a stale literal in either one turns resume into silent data corruption.
 #
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\test-coverage.ps1
@@ -37,6 +40,14 @@ $attrCsv   = Join-Path $outputDir 'Extracted_Attributes.csv'
 $console   = 'C:\Program Files\Autodesk\AutoCAD 2026\accoreconsole.exe'
 
 $script:failures = 0
+
+# The supervisor refuses .ok files written under another schema, so its literal and the
+# engine's constant must agree. Both are read from source rather than restated here: a
+# stale copy in this script would happily certify a drift it caused.
+$schemaSource = [System.IO.File]::ReadAllText((Join-Path $Root 'AEC_Batch_Data_Haravester\Core\HarvestSchema.cs'))
+$SchemaVersion = [int][regex]::Match($schemaSource, 'const\s+int\s+Version\s*=\s*(\d+)').Groups[1].Value
+$supervisorSource = [System.IO.File]::ReadAllText((Join-Path $Root 'tools\run-harvest-batch.ps1'))
+$supervisorVersion = [int][regex]::Match($supervisorSource, '\$SchemaVersion\s*=\s*(\d+)').Groups[1].Value
 
 function Check([bool] $condition, [string] $what) {
     if ($condition) {
@@ -175,9 +186,20 @@ try {
             # entmake with a 410 group places the entity in the named layout, independent
             # of what is visible in the editor. The 410 value is the current tab name.
             $editScript = Join-Path $scratch 'make.scr'
+            # Four probe objects in one drawing:
+            #   TEXT  - paper space is traversed (section 4)
+            #   RAY   - an unsupported class is counted, not silently dropped (section 6)
+            #   INSERT of CONSTPROBE - a constant attribute is read from the definition
+            #          (section 7). Constant attributes are never copied onto the reference,
+            #          so only a definition read can find this value.
             $lines = @(
                 '(setvar "CTAB" "Layout1")',
                 '(entmake (list (cons 0 "TEXT") (cons 8 "0") (cons 10 (list 5.0 5.0 0.0)) (cons 40 0.25) (cons 1 "PAPER-SPACE-PROBE") (cons 410 (getvar "CTAB"))))',
+                '(entmake (list (cons 0 "RAY") (cons 100 "AcDbEntity") (cons 100 "AcDbRay") (cons 8 "0") (cons 10 (list 0.0 0.0 0.0)) (cons 11 (list 1.0 0.0 0.0)) (cons 410 (getvar "CTAB"))))',
+                '(entmake (list (cons 0 "BLOCK") (cons 2 "CONSTPROBE") (cons 70 0) (cons 10 (list 0.0 0.0 0.0))))',
+                '(entmake (list (cons 0 "ATTDEF") (cons 8 "0") (cons 10 (list 0.0 0.0 0.0)) (cons 40 0.25) (cons 1 "CONST-VALUE") (cons 2 "CTAG") (cons 3 "constant probe") (cons 70 2)))',
+                '(entmake (list (cons 0 "ENDBLK")))',
+                '(entmake (list (cons 0 "INSERT") (cons 8 "0") (cons 2 "CONSTPROBE") (cons 10 (list 10.0 10.0 0.0)) (cons 410 (getvar "CTAB"))))',
                 '(command "_.QSAVE")'
             )
             [System.IO.File]::WriteAllText(
@@ -237,6 +259,34 @@ try {
                     ("and the extractor ran on it (type {0})" -f $found[0].EntityType)
             }
 
+            # ---------------------------------------------- 6 and 7 status truth
+            # The .ok file is the only place a reader can learn what was NOT harvested, so
+            # the fixture asks the two questions a clean CSV cannot answer: did the status
+            # name the schema, and did it count the RAY the registry cannot extract?
+            $verdictPath = Join-Path $probeOutput '_status\Paper Probe-11223344.ok'
+            $verdict = $null
+            if (Test-Path $verdictPath) {
+                try { $verdict = [System.IO.File]::ReadAllText($verdictPath) | ConvertFrom-Json } catch { }
+            }
+
+            $verdictSchema = $null
+            if ($verdict) { $verdictSchema = $verdict.schema }
+            Check ($null -ne $verdictSchema -and [int]$verdictSchema -eq $SchemaVersion) `
+                ("the verdict names the schema the engine wrote ({0}, expected {1})" -f $verdictSchema, $SchemaVersion)
+
+            $rayCount = 0
+            if ($verdict -and $verdict.unsupported) { $rayCount = [int]$verdict.unsupported.RAY }
+            Check ($rayCount -eq 1) ("an unsupported RAY is counted by class (found {0})" -f $rayCount)
+
+            $probeAttrs = Join-Path $probeOutput '_rows\Paper Probe-11223344.attributes.csv'
+            $constant = @()
+            if (Test-Path $probeAttrs) {
+                $constant = @(Import-Csv $probeAttrs |
+                    Where-Object { $_.Tag -eq 'CTAG' -and $_.Value -eq 'CONST-VALUE' -and $_.IsConstant -eq '1' })
+            }
+            Check ($constant.Count -eq 1) `
+                ("a constant attribute is read from the definition (found {0})" -f $constant.Count)
+
             if ($found.Count -eq 0) {
                 Write-Host '          supervisor output:'
                 foreach ($line in ($out -split "`r?`n")) {
@@ -288,6 +338,9 @@ try {
 
     Check ($classes.Count -eq $kinds.Count) `
         ("every extractor maps to its own EntityKind ($($classes.Count) of $($kinds.Count))")
+
+    Check ($SchemaVersion -eq $supervisorVersion) `
+        ("the supervisor trusts schema {0} and the engine writes {1}" -f $supervisorVersion, $SchemaVersion)
 }
 finally {
     Remove-Item Env:AEC_HARVEST_OUTPUT -ErrorAction SilentlyContinue

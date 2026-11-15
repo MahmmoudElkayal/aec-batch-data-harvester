@@ -44,6 +44,11 @@ $chunkFile = Join-Path $outputDir 'batch.txt'
 $marker    = Join-Path $statusDir '_current.txt'
 $summary   = Join-Path $statusDir '_batch.json'
 
+# The output contract this supervisor is willing to trust, in step with
+# HarvestSchema.Version (AEC_Batch_Data_Haravester\Core\HarvestSchema.cs).
+# tools\test-coverage.ps1 fails if the two drift apart.
+$SchemaVersion = 2
+
 if (-not $Manifest) { $Manifest = Join-Path $outputDir 'manifest.txt' }
 if (-not $Script)   { $Script   = Join-Path $Root 'Scripts\HarvestBatch.scr' }
 
@@ -119,20 +124,33 @@ function Test-Reported([string] $key) {
            (Test-Path (Join-Path $statusDir ($key + '.fail')))
 }
 
+function Read-Verdict([string] $key, [string] $extension) {
+    $path = Join-Path $statusDir ($key + $extension)
+    if (-not (Test-Path $path)) { return $null }
+    try { return ([System.IO.File]::ReadAllText($path) | ConvertFrom-Json) } catch { return $null }
+}
+
 function Test-Complete([string] $key) {
     # Both files are part of one drawing's output: entity rows, attribute rows, and the
     # verdict. A resume must not treat a drawing from before Phase 5, or a kill between
     # the two publishes, as finished.
-    return (Test-Path (Join-Path $rowsDir ($key + '.csv'))) -and
-           (Test-Path (Join-Path $rowsDir ($key + '.attributes.csv'))) -and
-           (Test-Path (Join-Path $statusDir ($key + '.ok')))
+    if (-not (Test-Path (Join-Path $rowsDir ($key + '.csv')))) { return $false }
+    if (-not (Test-Path (Join-Path $rowsDir ($key + '.attributes.csv')))) { return $false }
+
+    # The verdict must also come from this schema. An .ok written by an older engine
+    # describes a different CSV, and merging it would put two extraction rules in one
+    # file with nothing to say which row came from which.
+    $verdict = Read-Verdict $key '.ok'
+    return ($null -ne $verdict) -and ([int]$verdict.schema -eq $SchemaVersion)
 }
 
 function Write-Fail([string] $key, [string] $drawing, [string] $message, [string] $detail) {
     # Same shape as the plugin's status file, because the supervisor and any later reader
     # must not care which side wrote it.
-    $payload = '{"ok":false,"drawing":"' + ($drawing -replace '\\', '\\\\' -replace '"', '\"') +
-               '","rows":0,"skipped":0,"ms":0,"message":"' + ($message -replace '\\', '\\\\' -replace '"', '\"') + '"}'
+    $payload = '{"ok":false,"schema":' + $SchemaVersion +
+               ',"tool":"supervisor","drawing":"' + ($drawing -replace '\\', '\\\\' -replace '"', '\"') +
+               '","rows":0,"attrs":0,"skipped":0,"unsupported":{},"unsupportedTotal":0,"ms":0,"message":"' +
+               ($message -replace '\\', '\\\\' -replace '"', '\"') + '"}'
 
     [System.IO.File]::WriteAllText((Join-Path $statusDir ($key + '.fail')), $payload, $utf8NoBom)
 
@@ -285,11 +303,30 @@ $okCount = @($entries | Where-Object { Test-Complete $_.Key }).Count
 $failCount = @($entries | Where-Object { Test-Path (Join-Path $statusDir ($_.Key + '.fail')) }).Count
 $unreported = $entries.Count - $okCount - $failCount
 
+# ------------------------------------------------------- unsupported census
+# Sums the classes the engine could not read across every completed drawing. A corpus
+# that is mostly hatches, dimensions or proxies would otherwise look exactly like a
+# clean corpus: same exit code, same shape of CSV, fewer rows and no explanation.
+$unsupportedTotals = @{}
+foreach ($entry in $entries) {
+    $verdict = Read-Verdict $entry.Key '.ok'
+    if ($null -eq $verdict -or $null -eq $verdict.unsupported) { continue }
+    foreach ($property in $verdict.unsupported.PSObject.Properties) {
+        $unsupportedTotals[$property.Name] = [int]$unsupportedTotals[$property.Name] + [int]$property.Value
+    }
+}
+
 Write-Host ''
 Write-Host ("Engine  : {0} drawing(s), {1} ms of engine time" -f $totalDrawingsMeasured, $totalEngineMs)
 if ($totalDrawingsMeasured -gt 0) {
     $perDrawing = [double]$totalEngineMs / $totalDrawingsMeasured
     Write-Host ("Per dwg : {0:0.0} ms (engine only, excludes process start)" -f $perDrawing)
+}
+if ($unsupportedTotals.Count -gt 0) {
+    $top = $unsupportedTotals.GetEnumerator() |
+        Sort-Object -Property Value -Descending | Select-Object -First 8
+    $rendered = ($top | ForEach-Object { '{0}={1}' -f $_.Key, $_.Value }) -join ', '
+    Write-Host ("Skipped : {0}" -f $rendered)
 }
 
 if ($unreported -gt 0) {

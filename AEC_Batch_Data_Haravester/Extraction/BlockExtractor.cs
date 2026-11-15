@@ -38,10 +38,36 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 Unit: context.Unit,
                 UnitCode: context.UnitCode);
 
-            return new EntityExtraction(new[] { row }, Attributes(block, context, handle));
+            return new EntityExtraction(new[] { row }, AllAttributes(block, context, handle));
         }
 
-        private static IReadOnlyList<HarvestAttributeRow> Attributes(
+        /// <summary>
+        /// The reference's own attributes plus the definition's constant ones.
+        ///
+        /// Constant attributes never appear in <c>AttributeCollection</c> - AutoCAD reuses
+        /// the definition instead of creating a copy - so a reader that only walks the
+        /// collection reports <c>IsConstant: 0</c> forever and silently drops the values.
+        /// Both sets join to the block row by handle; the tag says which kind it was.
+        /// </summary>
+        private static IReadOnlyList<HarvestAttributeRow> AllAttributes(
+            BlockReference block, HarvestContext context, string handle)
+        {
+            List<HarvestAttributeRow> rows = Attributes(block, context, handle);
+
+            foreach (ConstantAttribute constant in context.ConstantAttributes(DefinitionId(block)))
+            {
+                rows.Add(new HarvestAttributeRow(
+                    Drawing: context.Drawing,
+                    EntityHandle: handle,
+                    Tag: constant.Tag,
+                    Value: TextValue.SingleLine(constant.Value),
+                    IsConstant: true));
+            }
+
+            return rows;
+        }
+
+        private static List<HarvestAttributeRow> Attributes(
             BlockReference block, HarvestContext context, string handle)
         {
             var rows = new List<HarvestAttributeRow>();
@@ -82,24 +108,20 @@ namespace AEC_Batch_Data_Haravester.Extraction
         }
 
         /// <summary>
-        /// The block definition's real name. For a dynamic block, Name is an anonymous
-        /// "*U12"-style name, so the definition is resolved through DynamicBlockTableRecord.
-        /// The equality of the two properties for non-dynamic blocks is undocumented,
-        /// hence the explicit branch rather than relying on it.
+        /// The block definition's real name. The dynamic-block branch lives in
+        /// <see cref="DefinitionId"/>; this only resolves the name and refuses to lose the
+        /// row when the definition is unreadable.
         /// </summary>
         private static string DefinitionName(Transaction tr, BlockReference block)
         {
+            ObjectId definitionId = DefinitionId(block);
+            if (definitionId.IsNull)
+            {
+                return string.Empty;
+            }
+
             try
             {
-                ObjectId definitionId = block.IsDynamicBlock
-                    ? block.DynamicBlockTableRecord
-                    : block.BlockTableRecord;
-
-                if (definitionId.IsNull)
-                {
-                    return string.Empty;
-                }
-
                 return tr.GetObject(definitionId, OpenMode.ForRead) is BlockTableRecord definition
                     ? definition.Name
                     : string.Empty;
@@ -108,6 +130,25 @@ namespace AEC_Batch_Data_Haravester.Extraction
             {
                 // A dangling or proxy definition must not lose the whole entity row.
                 return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// For a dynamic block, Name is an anonymous "*U12"-style name, so the definition
+        /// is resolved through DynamicBlockTableRecord. Every caller needs the same answer,
+        /// so the branch lives here once.
+        /// </summary>
+        private static ObjectId DefinitionId(BlockReference block)
+        {
+            try
+            {
+                return block.IsDynamicBlock
+                    ? block.DynamicBlockTableRecord
+                    : block.BlockTableRecord;
+            }
+            catch (AcException)
+            {
+                return ObjectId.Null;
             }
         }
     }

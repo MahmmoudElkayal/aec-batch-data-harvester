@@ -33,6 +33,7 @@ namespace Harvest.Checks
 
             GuardChecks();
             StatusJsonChecks();
+            CoverageChecks();
             CsvFormatChecks();
             KeyChecks();
             ManifestChecks();
@@ -85,6 +86,7 @@ namespace Harvest.Checks
                     rows: 20,
                     attributes: 0,
                     skipped: 0,
+                    unsupported: null,
                     unitName: "Inches",
                     unitCode: 1);
 
@@ -111,6 +113,7 @@ namespace Harvest.Checks
                     rows: 0,
                     attributes: 0,
                     skipped: 0,
+                    unsupported: null,
                     unitName: null,
                     unitCode: null);
 
@@ -132,7 +135,8 @@ namespace Harvest.Checks
 
                 string json = StatusJson.Build(
                     success: true, drawingName: name, message: "m", elapsedMs: 1,
-                    rows: 1, attributes: 0, skipped: 0, unitName: "Millimeters", unitCode: 4);
+                    rows: 1, attributes: 0, skipped: 0, unsupported: null,
+                    unitName: "Millimeters", unitCode: 4);
 
                 using JsonDocument doc = Parse(json);
                 string? readBack = doc.RootElement.GetProperty("drawing").GetString();
@@ -144,10 +148,119 @@ namespace Harvest.Checks
             {
                 string json = StatusJson.Build(
                     success: true, drawingName: "line\nbreak.dwg", message: "m\nmessage",
-                    elapsedMs: 0, rows: 0, attributes: 0, skipped: 0, unitName: null, unitCode: null);
+                    elapsedMs: 0, rows: 0, attributes: 0, skipped: 0, unsupported: null,
+                    unitName: null, unitCode: null);
 
                 return Expect(json.IndexOfAny(new[] { '\r', '\n' }) < 0,
                     "raw newline in the status file");
+            });
+
+            Check("the verdict carries the schema and tool version", () =>
+            {
+                string json = StatusJson.Build(
+                    success: true, drawingName: "x.dwg", message: "m", elapsedMs: 0,
+                    rows: 0, attributes: 0, skipped: 0, unsupported: null,
+                    unitName: null, unitCode: null);
+
+                using JsonDocument doc = Parse(json);
+                JsonElement root = doc.RootElement;
+
+                return Expect(root.GetProperty("schema").GetInt32() == HarvestSchema.Version, "schema")
+                    ?? Expect(root.GetProperty("tool").GetString() == HarvestSchema.ToolVersion, "tool")
+                    ?? Expect(!HarvestSchema.ToolVersion.Contains('+'), "tool must not carry a build hash");
+            });
+
+            Check("unsupported classes are counted, sorted and escaped", () =>
+            {
+                var counts = new Dictionary<string, int>
+                {
+                    ["HATCH"] = 12,
+                    ["DIMENSION"] = 4,
+                    ["ACAD_PROXY_ENTITY"] = 2
+                };
+
+                string json = StatusJson.Build(
+                    success: true, drawingName: "plan.dwg", message: "m", elapsedMs: 9,
+                    rows: 10, attributes: 0, skipped: 0, unsupported: counts,
+                    unitName: null, unitCode: null);
+
+                using JsonDocument doc = Parse(json);
+                JsonElement root = doc.RootElement;
+                JsonElement unsupported = root.GetProperty("unsupported");
+                string[] names = unsupported.EnumerateObject().Select(p => p.Name).ToArray();
+
+                return Expect(unsupported.GetProperty("HATCH").GetInt32() == 12, "HATCH count")
+                    ?? Expect(root.GetProperty("unsupportedTotal").GetInt32() == 18, "total")
+                    ?? Expect(names.SequenceEqual(new[] { "ACAD_PROXY_ENTITY", "DIMENSION", "HATCH" }),
+                        "keys must be ordinal-sorted: " + string.Join(",", names));
+            });
+
+            Check("an empty census is an empty object, not a missing field", () =>
+            {
+                string json = StatusJson.Build(
+                    success: true, drawingName: "clean.dwg", message: "m", elapsedMs: 1,
+                    rows: 1, attributes: 0, skipped: 0, unsupported: null,
+                    unitName: null, unitCode: null);
+
+                using JsonDocument doc = Parse(json);
+                JsonElement root = doc.RootElement;
+
+                return Expect(root.GetProperty("unsupported").ValueKind == JsonValueKind.Object,
+                        "unsupported must be an object")
+                    ?? Expect(!root.GetProperty("unsupported").EnumerateObject().Any(), "object must be empty")
+                    ?? Expect(root.GetProperty("unsupportedTotal").GetInt32() == 0, "total must be 0");
+            });
+        }
+
+        // --------------------------------------------------------------- coverage
+
+        private static void CoverageChecks()
+        {
+            Section("unsupported census");
+
+            Check("counts add up and stay separate by class", () =>
+            {
+                var census = new UnsupportedEntities();
+                census.Add("HATCH");
+                census.Add("HATCH");
+                census.Add(null);
+
+                IReadOnlyDictionary<string, int> counts = census.ToSortedDictionary();
+
+                return Expect(census.Total == 3, "total")
+                    ?? Expect(counts["HATCH"] == 2, "HATCH")
+                    ?? Expect(counts[UnsupportedEntities.UnresolvedClass] == 1, "unresolved")
+                    ?? Expect(counts.Keys.SequenceEqual(
+                           new[] { UnsupportedEntities.UnresolvedClass, "HATCH" }), "sorted keys");
+            });
+
+            Check("merging two layout censuses sums both", () =>
+            {
+                var model = new UnsupportedEntities();
+                model.Add("DIMENSION");
+
+                var paper = new UnsupportedEntities();
+                paper.Add("DIMENSION");
+                paper.Add("RAY");
+
+                model.Merge(paper);
+
+                IReadOnlyDictionary<string, int> counts = model.ToSortedDictionary();
+
+                return Expect(model.Total == 3, "total")
+                    ?? Expect(counts["DIMENSION"] == 2, "DIMENSION")
+                    ?? Expect(counts["RAY"] == 1, "RAY");
+            });
+
+            Check("a blank or missing name is never dropped", () =>
+            {
+                var census = new UnsupportedEntities();
+                census.Add("   ");
+                census.Add(null);
+
+                return Expect(census.Total == 2, "total")
+                    ?? Expect(census.ToSortedDictionary()[UnsupportedEntities.UnresolvedClass] == 2,
+                        "unresolved bucket");
             });
         }
 
