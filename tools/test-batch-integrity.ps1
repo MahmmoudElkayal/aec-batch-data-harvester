@@ -125,7 +125,8 @@ try {
 
     $planKeys = @()
     if (Test-Path $rowsDir) {
-        $planKeys = @(Get-ChildItem $rowsDir -Filter 'Plan-*.csv' -File)
+        $planKeys = @(Get-ChildItem $rowsDir -Filter 'Plan-*.csv' -File |
+            Where-Object { $_.Name -notlike '*.attributes.csv' })
     }
     Check ($planKeys.Count -eq 2) "both Plan.dwg drawings have their own row file (found $($planKeys.Count))"
     Check ((@($planKeys | Select-Object -ExpandProperty Name -Unique)).Count -eq 2) 'their keys differ'
@@ -229,11 +230,21 @@ try {
 
     $process = Start-Process -FilePath 'cmd.exe' `
         -ArgumentList @('/c', "`"$bat`" /q") -PassThru -WindowStyle Hidden
+    $started = Get-Date
 
-    # Early enough to be inside the chunk (a full run takes ~3 s), late enough that some
-    # drawings have already reported - otherwise the test proves only that an idle process
-    # can be killed.
-    Start-Sleep -Milliseconds 2200
+    # Wait until at least one drawing has genuinely reported. Killing an idle process
+    # would prove only that taskkill works; the property under test is that a drawing
+    # which already finished survives, and nothing partial is published for the rest.
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline) {
+        $reported = @(Get-ChildItem $statusDir -Filter *.ok -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -gt $started })
+        if ($reported.Count -gt 0) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    $reportedBeforeKill = @(Get-ChildItem $statusDir -Filter *.ok -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -gt $started }).Count
+    Write-Host ("    (drawings reported before the kill: {0})" -f $reportedBeforeKill)
 
     # taskkill writes to stderr, and a target that already exited is not an error worth
     # stopping for: the assertion below does not depend on the kill having succeeded.
@@ -262,11 +273,11 @@ try {
 
     # Merge what survived, and prove it contains exactly the drawings that reported.
     $expectedRows = 0
-    foreach ($rows in @(Get-ChildItem $statusDir -Filter *.rows -File -ErrorAction SilentlyContinue)) {
-        $key = [System.IO.Path]::GetFileNameWithoutExtension($rows.Name)
-        if (Test-Path (Join-Path $statusDir ($key + '.ok'))) {
-            $expectedRows += [int]((Get-Content $rows.FullName -Raw).Trim())
-        }
+    $expectedAttrs = 0
+    foreach ($ok in @(Get-ChildItem $statusDir -Filter *.ok -File -ErrorAction SilentlyContinue)) {
+        $payload = Get-Content $ok.FullName -Raw | ConvertFrom-Json
+        $expectedRows += [int]$payload.rows
+        $expectedAttrs += [int]$payload.attrs
     }
 
     & powershell -NoProfile -ExecutionPolicy Bypass -File `
@@ -279,13 +290,61 @@ try {
     Check ($mergedAfterKill -eq $expectedRows) `
         "the merge published only reported drawings ($mergedAfterKill rows, expected $expectedRows)"
 
+    # The attribute file is gated the same way. A killed drawing that published its
+    # entity rows but not its verdict must not contribute attributes either.
+    $attributeCsv = Join-Path $Root 'Output\Extracted_Attributes.csv'
+    $mergedAttrs = 0
+    if (Test-Path $attributeCsv) {
+        $mergedAttrs = @([System.IO.File]::ReadAllLines($attributeCsv)).Count - 1
+    }
+    Check ($mergedAttrs -eq $expectedAttrs) `
+        "the attribute merge published only reported drawings ($mergedAttrs rows, expected $expectedAttrs)"
+
+    # The real kill window - rows published, verdict not yet written - is a few
+    # milliseconds wide, so a timing test cannot be relied on to land in it. Prove the
+    # gate directly: hold back one drawing's verdict and merge again. Its files still
+    # exist; only the .ok is missing.
+    $candidates = @(Get-ChildItem $statusDir -Filter *.ok -File | ForEach-Object {
+        [pscustomobject]@{
+            File = $_
+            Payload = (Get-Content $_.FullName -Raw | ConvertFrom-Json)
+        }
+    })
+    $withAttributes = @($candidates | Where-Object { [int]$_.Payload.attrs -gt 0 })
+    $victim = if ($withAttributes.Count -gt 0) { $withAttributes[0] } else { $candidates[0] }
+
+    if ($victim) {
+        $held = $victim.File.FullName + '.held'
+        Move-Item $victim.File.FullName $held -Force
+
+        & powershell -NoProfile -ExecutionPolicy Bypass -File `
+            (Join-Path $Root 'tools\merge-rows.ps1') -Root $Root | Out-Null
+
+        $gatedRows = @([System.IO.File]::ReadAllLines($csv)).Count - 1
+        $gatedAttrs = @([System.IO.File]::ReadAllLines($attributeCsv)).Count - 1
+        Check ($gatedRows -eq ($expectedRows - [int]$victim.Payload.rows)) `
+            ("a row file without .ok is not merged ($gatedRows rows, expected {0})" -f
+             ($expectedRows - [int]$victim.Payload.rows))
+        Check ($gatedAttrs -eq ($expectedAttrs - [int]$victim.Payload.attrs)) `
+            ("its attributes are not merged either ($gatedAttrs rows, expected {0})" -f
+             ($expectedAttrs - [int]$victim.Payload.attrs))
+
+        Move-Item $held $victim.File.FullName -Force
+        & powershell -NoProfile -ExecutionPolicy Bypass -File `
+            (Join-Path $Root 'tools\merge-rows.ps1') -Root $Root | Out-Null
+        Check ((@([System.IO.File]::ReadAllLines($csv)).Count - 1) -eq $expectedRows) `
+            'restoring the verdict restores the rows'
+    }
+
     # A row file that lost the race to its .ok must not reach the merged CSV. Every merged
     # row is accounted for by a .rows file that has an .ok, so any orphan above is excluded
     # by construction - reported, not asserted twice.
-    $dataWithoutOk = @(Get-ChildItem $rowsDir -Filter *.csv -File | Where-Object {
-        -not (Test-Path (Join-Path $statusDir (
-            [System.IO.Path]::GetFileNameWithoutExtension($_.Name) + '.ok')))
-    })
+    $dataWithoutOk = @(Get-ChildItem $rowsDir -Filter *.csv -File |
+        Where-Object { $_.Name -notlike '*.attributes.csv' } |
+        Where-Object {
+            -not (Test-Path (Join-Path $statusDir (
+                [System.IO.Path]::GetFileNameWithoutExtension($_.Name) + '.ok')))
+        })
     Write-Host ("    (row files published but not yet reported: {0})" -f $dataWithoutOk.Count)
 
     Write-Host ("    (temporary files left by the kill: {0})" -f $tempFiles.Count)

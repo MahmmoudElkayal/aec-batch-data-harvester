@@ -45,10 +45,11 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 options = HarvestOptions.FromEnvironment();
                 var reporter = new FileStatusReporter(options);
                 var formatter = new CsvFormatter();
+                var attributeFormatter = new AttributeCsvFormatter();
 
-                using var sink = new CsvRowSink(options, formatter);
+                using var sink = new CsvRowSink(options, formatter, attributeFormatter);
 
-                HarvestResult result = new ModelSpaceScanner(Registry, Resolver)
+                HarvestResult result = new DrawingScanner(Registry, Resolver)
                     .Scan(db, drawingName, sink);
 
                 sink.Complete();
@@ -57,10 +58,12 @@ namespace AEC_Batch_Data_Haravester.Extraction
                     drawingName,
                     string.Format(
                         CultureInfo.InvariantCulture,
-                        "{0} rows, {1} skipped from {2} -> {3}",
-                        result.RowsWritten, result.Skipped, drawingName, sink.Path),
+                        "{0} rows, {1} attributes, {2} skipped from {3} -> {4}",
+                        result.RowsWritten, result.AttributesWritten, result.Skipped,
+                        drawingName, sink.Path),
                     stopwatch.ElapsedMilliseconds,
                     result.RowsWritten,
+                    result.AttributesWritten,
                     result.Skipped,
                     db.Insunits.ToString(),
                     (int)db.Insunits);

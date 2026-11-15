@@ -38,6 +38,7 @@ set "LOGS=%ROOT%\Logs"
 set "SCRIPTS=%ROOT%\Scripts"
 set "SCRIPT=%SCRIPTS%\HarvestBatch.scr"
 set "CSV=%OUTPUT%\Extracted_BOM.csv"
+set "ATTRCSV=%OUTPUT%\Extracted_Attributes.csv"
 set "MANIFEST=%OUTPUT%\manifest.txt"
 set "ROWS=%OUTPUT%\_rows"
 set "STATUSDIR=%OUTPUT%\_status"
@@ -131,10 +132,11 @@ REM the engine opens each one as a side database.
 ) > "%SCRIPT%"
 
 REM A fresh run replaces results; /append keeps the per-drawing files *and* their verdicts,
-REM which is what makes a resume possible: a drawing whose .ok and .csv both survive is
-REM known finished and is not harvested again. A .fail is retried, because /append is
-REM also the "carry on after a crash" mode.
+REM which is what makes a resume possible: a drawing whose .ok, .csv and .attributes.csv
+REM all survive is known finished and is not harvested again. A .fail is retried, because
+REM /append is also the "carry on after a crash" mode.
 if defined FRESH if exist "%CSV%" del /q "%CSV%"
+if defined FRESH if exist "%ATTRCSV%" del /q "%ATTRCSV%"
 if defined FRESH if exist "%ROWS%" rd /s /q "%ROWS%"
 if defined FRESH if exist "%STATUSDIR%" rd /s /q "%STATUSDIR%"
 
@@ -160,6 +162,7 @@ echo Console : %CONSOLE%
 echo Assembly: %DLL%
 echo Input   : %INPUT%%RECURSE%
 echo Output  : %CSV%
+echo Attributes: %ATTRCSV%
 echo Rows    : %ROWS%
 if defined FRESH (echo Mode    : fresh - per-drawing files reset) else (echo Mode    : append - finished drawings are kept, not re-harvested)
 echo Timeout : %AEC_HARVEST_TIMEOUT% s per chunk, %AEC_HARVEST_CHUNK% drawings per process
@@ -205,6 +208,10 @@ if exist "%CSV%" (
 ) else (
     echo [WARN] No CSV was produced.
 )
+if exist "%ATTRCSV%" (
+    for /f %%N in ('find /c /v "" ^< "%ATTRCSV%"') do echo Attribute lines: %%N
+    echo Attribute file : %ATTRCSV%
+)
 
 if %FAILED% GTR 0 (
     echo [WARN] %FAILED% drawing^(s^) failed.
@@ -236,6 +243,11 @@ echo   /q        do not pause at the end
 echo.
 echo   AEC_HARVEST_TIMEOUT  seconds per chunk before the process is killed (default 300)
 echo   AEC_HARVEST_CHUNK    drawings per Core Console process (default 50)
+echo   AEC_HARVEST_EXCEL_SAFE=1   prefix text that starts with = + - @ or a tab with an
+echo                              apostrophe, so Excel does not treat it as a formula
+echo                              (off by default: it changes real layer names)
+echo   AEC_HARVEST_UTF8_BOM=1     write a UTF-8 BOM so Windows Excel decodes non-ASCII
+echo                              text correctly (off by default: a BOM confuses parsers)
 echo.
 exit /b 0
 

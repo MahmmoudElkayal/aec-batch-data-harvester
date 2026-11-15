@@ -83,6 +83,7 @@ namespace Harvest.Checks
                     message: "20 rows, 0 skipped",
                     elapsedMs: 25,
                     rows: 20,
+                    attributes: 0,
                     skipped: 0,
                     unitName: "Inches",
                     unitCode: 1);
@@ -93,6 +94,7 @@ namespace Harvest.Checks
                 return Expect(root.GetProperty("ok").GetBoolean(), "ok should be true")
                     ?? Expect(root.GetProperty("drawing").GetString() == "House Designer.dwg", "drawing")
                     ?? Expect(root.GetProperty("rows").GetInt32() == 20, "rows")
+                    ?? Expect(root.GetProperty("attrs").GetInt32() == 0, "attrs")
                     ?? Expect(root.GetProperty("skipped").GetInt32() == 0, "skipped")
                     ?? Expect(root.GetProperty("ms").GetInt64() == 25, "ms")
                     ?? Expect(root.GetProperty("units").GetString() == "Inches", "units")
@@ -107,6 +109,7 @@ namespace Harvest.Checks
                     message: "AutoCAD error: Drawing file is not valid.",
                     elapsedMs: 3,
                     rows: 0,
+                    attributes: 0,
                     skipped: 0,
                     unitName: null,
                     unitCode: null);
@@ -129,7 +132,7 @@ namespace Harvest.Checks
 
                 string json = StatusJson.Build(
                     success: true, drawingName: name, message: "m", elapsedMs: 1,
-                    rows: 1, skipped: 0, unitName: "Millimeters", unitCode: 4);
+                    rows: 1, attributes: 0, skipped: 0, unitName: "Millimeters", unitCode: 4);
 
                 using JsonDocument doc = Parse(json);
                 string? readBack = doc.RootElement.GetProperty("drawing").GetString();
@@ -141,7 +144,7 @@ namespace Harvest.Checks
             {
                 string json = StatusJson.Build(
                     success: true, drawingName: "line\nbreak.dwg", message: "m\nmessage",
-                    elapsedMs: 0, rows: 0, skipped: 0, unitName: null, unitCode: null);
+                    elapsedMs: 0, rows: 0, attributes: 0, skipped: 0, unitName: null, unitCode: null);
 
                 return Expect(json.IndexOfAny(new[] { '\r', '\n' }) < 0,
                     "raw newline in the status file");
@@ -175,6 +178,15 @@ namespace Harvest.Checks
                 ?? Expect(CsvFormatter.Number(1.5) == "1.500", "1.5")
                 ?? Expect(CsvFormatter.Number(-2.25) == "-2.250", "-2.25")
                 ?? Expect(CsvFormatter.Number(1234.5678) == "1234.568", "rounding"));
+
+            Check("the Excel guard prefixes only the five risky characters", () =>
+                Expect(CsvFormatter.ExcelGuard("=SUM(A1)") == "'=SUM(A1)", "equals")
+                ?? Expect(CsvFormatter.ExcelGuard("+12") == "'+12", "plus")
+                ?? Expect(CsvFormatter.ExcelGuard("-Layer") == "'-Layer", "minus")
+                ?? Expect(CsvFormatter.ExcelGuard("@handle") == "'@handle", "at")
+                ?? Expect(CsvFormatter.ExcelGuard("\tindent") == "'\tindent", "tab")
+                ?? Expect(CsvFormatter.ExcelGuard("Layer 0") == "Layer 0", "plain text")
+                ?? Expect(CsvFormatter.ExcelGuard(string.Empty) == string.Empty, "empty"));
         }
 
         // ------------------------------------------------------------- status keys
@@ -208,6 +220,37 @@ namespace Harvest.Checks
                 {
                     Throws<InvalidOperationException>(() => HarvestOptions.FromEnvironment());
                     return null;
+                });
+            });
+
+            Check("the opt-in switches are on only for exactly \"1\"", () =>
+            {
+                return WithKey("K-00000001", () =>
+                {
+                    string? previousSafe = Environment.GetEnvironmentVariable(
+                        HarvestOptions.ExcelSafeVariable);
+                    string? previousBom = Environment.GetEnvironmentVariable(
+                        HarvestOptions.Utf8BomVariable);
+
+                    try
+                    {
+                        Environment.SetEnvironmentVariable(HarvestOptions.ExcelSafeVariable, "1");
+                        Environment.SetEnvironmentVariable(HarvestOptions.Utf8BomVariable, "true");
+
+                        HarvestOptions options = HarvestOptions.FromEnvironment();
+
+                        // "true" must not switch a behaviour that rewrites values: a typo
+                        // should leave the default alone, not silently turn the guard on.
+                        return Expect(options.ExcelSafe, "excel-safe should be on for \"1\"")
+                            ?? Expect(!options.Utf8Bom, "a BOM needs \"1\", not \"true\"");
+                    }
+                    finally
+                    {
+                        Environment.SetEnvironmentVariable(
+                            HarvestOptions.ExcelSafeVariable, previousSafe);
+                        Environment.SetEnvironmentVariable(
+                            HarvestOptions.Utf8BomVariable, previousBom);
+                    }
                 });
             });
         }
@@ -463,6 +506,87 @@ namespace Harvest.Checks
                 return Expect(header.SequenceEqual(CsvFormatter.ColumnNames()),
                         "Header disagrees with ColumnNames()")
                     ?? Expect(header.Length == values.Length, "header/row length mismatch");
+            });
+
+            Check("the Excel guard is off by default", () =>
+            {
+                var row = new HarvestRow(
+                    "D.dwg", "Model", "Line", "", "", "-Layer", "1", -5.5, 0, 0, 1, "Inches", 1);
+
+                string[] fields = SplitCsv(formatter.Row(row));
+
+                return Expect(fields[5] == "-Layer", "layer changed with the guard off")
+                    ?? Expect(fields[7] == "-5.500", "negative X changed with the guard off");
+            });
+
+            Check("the Excel guard fires on text but never on a number", () =>
+            {
+                var guarded = new CsvFormatter(excelSafe: true);
+                var row = new HarvestRow(
+                    "D.dwg", "Model", "Line", "", "", "-Layer", "1", -5.5, 0, 0, 1, "Inches", 1);
+
+                string[] fields = SplitCsv(guarded.Row(row));
+
+                // An apostrophe on a numeric field would stop it being a number, which is
+                // why the guard is applied per column rather than to the whole row.
+                return Expect(fields[5] == "'-Layer", "text layer not guarded")
+                    ?? Expect(fields[7] == "-5.500", "a negative coordinate must stay numeric")
+                    ?? Expect(fields[10] == "1.000", "a positive length must stay numeric")
+                    ?? Expect(fields[12] == "1", "the unit code must stay numeric");
+            });
+
+            Check("the attribute guard is opt-in too", () =>
+            {
+                var row = new HarvestAttributeRow("D.dwg", "1", "-TAG", "=1+1", IsConstant: false);
+
+                string[] plain = SplitCsv(new AttributeCsvFormatter().Row(row));
+                string[] guarded = SplitCsv(new AttributeCsvFormatter(excelSafe: true).Row(row));
+
+                return Expect(plain[2] == "-TAG" && plain[3] == "=1+1",
+                        "the default attribute formatter changed a value")
+                    ?? Expect(guarded[2] == "'-TAG", "tag not guarded")
+                    ?? Expect(guarded[3] == "'=1+1", "value not guarded")
+                    ?? Expect(guarded[4] == "0", "the constant flag must not be guarded");
+            });
+
+            Check("attribute schema is the documented long format", () =>
+            {
+                string[] expected = { "Drawing", "EntityHandle", "Tag", "Value", "IsConstant" };
+                string[] actual = AttributeCsvFormatter.ColumnNames();
+
+                return Expect(actual.SequenceEqual(expected),
+                    "columns are " + string.Join(",", actual));
+            });
+
+            Check("an attribute value is escaped and the flag is 1 or 0", () =>
+            {
+                var formatter2 = new AttributeCsvFormatter();
+
+                var row = new HarvestAttributeRow(
+                    Drawing: "Floor, Plan.dwg",
+                    EntityHandle: "2A7",
+                    Tag: "#",
+                    Value: "RIVET #511 X 3/16, \"long\"",
+                    IsConstant: false);
+
+                string[] fields = SplitCsv(formatter2.Row(row));
+
+                return Expect(fields.Length == 5, "field count")
+                    ?? Expect(fields[0] == "Floor, Plan.dwg", "drawing")
+                    ?? Expect(fields[1] == "2A7", "entity handle")
+                    ?? Expect(fields[2] == "#", "tag may be '#'")
+                    ?? Expect(fields[3] == "RIVET #511 X 3/16, \"long\"", "value")
+                    ?? Expect(fields[4] == "0", "false must be 0");
+            });
+
+            Check("a constant attribute is 1", () =>
+            {
+                var formatter2 = new AttributeCsvFormatter();
+                var row = new HarvestAttributeRow("D.dwg", "1", "TAG", "", IsConstant: true);
+                string[] fields = SplitCsv(formatter2.Row(row));
+
+                return Expect(fields[4] == "1", "true must be 1")
+                    ?? Expect(fields[3] == string.Empty, "an empty value stays empty");
             });
         }
 

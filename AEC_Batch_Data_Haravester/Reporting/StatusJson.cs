@@ -16,6 +16,7 @@ namespace AEC_Batch_Data_Haravester.Reporting
             string message,
             long elapsedMs,
             int rows,
+            int attributes,
             int skipped,
             string? unitName,
             int? unitCode)
@@ -26,6 +27,7 @@ namespace AEC_Batch_Data_Haravester.Reporting
             sb.Append("\"ok\":").Append(success ? "true" : "false");
             sb.Append(",\"drawing\":\"").Append(Escape(drawingName)).Append('"');
             sb.Append(",\"rows\":").Append(rows.ToString(CultureInfo.InvariantCulture));
+            sb.Append(",\"attrs\":").Append(attributes.ToString(CultureInfo.InvariantCulture));
             sb.Append(",\"skipped\":").Append(skipped.ToString(CultureInfo.InvariantCulture));
 
             if (unitName is not null && unitCode.HasValue)

@@ -2,7 +2,6 @@
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Runtime;
 using AEC_Batch_Data_Haravester.Core;
-using AcException = Autodesk.AutoCAD.Runtime.Exception;
 
 namespace AEC_Batch_Data_Haravester.Extraction
 {
@@ -11,11 +10,11 @@ namespace AEC_Batch_Data_Haravester.Extraction
     {
         public RXClass TargetClass => RXClass.GetClass(typeof(Polyline));
 
-        public IEnumerable<HarvestRow> Extract(Entity entity, HarvestContext context)
+        public EntityExtraction Extract(Entity entity, HarvestContext context)
         {
             var polyline = (Polyline)entity;
 
-            yield return new HarvestRow(
+            return EntityExtraction.FromRow(new HarvestRow(
                 Drawing: context.Drawing,
                 Space: context.Space,
                 EntityType: EntityKind.Polyline.ToString(),
@@ -26,22 +25,9 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 X: null,
                 Y: null,
                 Z: null,
-                Length: SafeLength(polyline),
+                Length: CurveLength.TryMeasure(polyline),
                 Unit: context.Unit,
-                UnitCode: context.UnitCode);
-        }
-
-        private static double? SafeLength(Polyline polyline)
-        {
-            try
-            {
-                return polyline.Length;
-            }
-            catch (AcException)
-            {
-                // Degenerate/self-intersecting polyline can fail to measure.
-                return null;
-            }
+                UnitCode: context.UnitCode));
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Globalization;
 using System.Linq;
 using AEC_Batch_Data_Haravester.Core;
@@ -13,38 +14,50 @@ namespace AEC_Batch_Data_Haravester.Output
     /// step by hand. Here the header and the values come from the same array of column
     /// definitions, so a column cannot be added to one and forgotten in the other, and
     /// adding a column is a one-line edit.
+    ///
+    /// Text columns go through <see cref="ExcelGuard"/> and quoting; numeric columns do
+    /// neither. That split is what makes the opt-in Excel guard safe: a negative
+    /// coordinate must never gain an apostrophe, because then it is no longer a number.
     /// </summary>
     public sealed class CsvFormatter
     {
         private const string NumericFormat = "0.000";
 
-        private static readonly (string Header, Func<HarvestRow, string> Get)[] Columns =
+        // One allocation for the life of the process. The previous version allocated a
+        // four-element array on every cell, which is 6,748 wasted arrays per run.
+        private static readonly SearchValues<char> QuotingSpecials =
+            SearchValues.Create(",\"\r\n");
+
+        private readonly bool _excelSafe;
+
+        private static readonly (string Header, Func<HarvestRow, string> Get, bool Text)[] Columns =
         {
-            ("Drawing",         r => Escape(r.Drawing)),
-            ("Space",           r => Escape(r.Space)),
-            ("EntityType",      r => Escape(r.EntityType)),
-            ("Name",            r => Escape(r.Name)),
-            ("BlockDefinition", r => Escape(r.BlockDefinition)),
-            ("Layer",           r => Escape(r.Layer)),
-            ("Handle",          r => Escape(r.Handle)),
-            ("X",               r => Number(r.X)),
-            ("Y",               r => Number(r.Y)),
-            ("Z",               r => Number(r.Z)),
-            ("Length",          r => Number(r.Length)),
-            ("Unit",            r => Escape(r.Unit)),
-            ("UnitCode",        r => r.UnitCode.ToString(CultureInfo.InvariantCulture))
+            ("Drawing",         r => r.Drawing,         true),
+            ("Space",           r => r.Space,           true),
+            ("EntityType",      r => r.EntityType,      true),
+            ("Name",            r => r.Name,            true),
+            ("BlockDefinition", r => r.BlockDefinition, true),
+            ("Layer",           r => r.Layer,           true),
+            ("Handle",          r => r.Handle,          true),
+            ("X",               r => Number(r.X),       false),
+            ("Y",               r => Number(r.Y),       false),
+            ("Z",               r => Number(r.Z),       false),
+            ("Length",          r => Number(r.Length),  false),
+            ("Unit",            r => r.Unit,            true),
+            ("UnitCode",        r => r.UnitCode.ToString(CultureInfo.InvariantCulture), false)
         };
 
-        public string Header { get; }
-
-        public CsvFormatter()
+        public CsvFormatter(bool excelSafe = false)
         {
+            _excelSafe = excelSafe;
             Header = string.Join(",", Columns.Select(c => c.Header));
         }
 
+        public string Header { get; }
+
         public string Row(HarvestRow row)
         {
-            return string.Join(",", Columns.Select(c => c.Get(row)));
+            return string.Join(",", Columns.Select(c => Cell(c.Get(row), c.Text)));
         }
 
         /// <summary>Column names, for tests and documentation.</summary>
@@ -68,10 +81,41 @@ namespace AEC_Batch_Data_Haravester.Output
                 return string.Empty;
             }
 
-            bool mustQuote = value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) >= 0;
+            bool mustQuote = value.AsSpan().IndexOfAny(QuotingSpecials) >= 0;
             return mustQuote
                 ? "\"" + value.Replace("\"", "\"\"") + "\""
                 : value;
+        }
+
+        /// <summary>
+        /// Excel interprets a leading = + - @ or tab as the start of a formula. Prefixing
+        /// an apostrophe forces text. Off by default: "+", "-" and "@" are legal leading
+        /// characters of a layer name, so this changes real data when it fires.
+        /// </summary>
+        internal static string ExcelGuard(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return value;
+            }
+
+            char first = value[0];
+            if (first == '=' || first == '+' || first == '-' || first == '@' || first == '\t')
+            {
+                return "'" + value;
+            }
+
+            return value;
+        }
+
+        private string Cell(string value, bool text)
+        {
+            if (!text)
+            {
+                return value;
+            }
+
+            return Escape(_excelSafe ? ExcelGuard(value) : value);
         }
     }
 }

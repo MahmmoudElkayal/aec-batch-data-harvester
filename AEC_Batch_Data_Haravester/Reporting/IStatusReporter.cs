@@ -9,7 +9,7 @@
     {
         void Success(
             string drawingName, string message, long elapsedMs,
-            int rows, int skipped, string? unitName, int? unitCode);
+            int rows, int attributes, int skipped, string? unitName, int? unitCode);
 
         void Failure(string drawingName, string message, string? detail, long elapsedMs);
     }

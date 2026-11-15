@@ -30,7 +30,7 @@ namespace AEC_Batch_Data_Haravester.Reporting
 
         public void Success(
             string drawingName, string message, long elapsedMs,
-            int rows, int skipped, string? unitName, int? unitCode)
+            int rows, int attributes, int skipped, string? unitName, int? unitCode)
         {
             WriteConsole(DoneMarker + " " + message);
 
@@ -41,6 +41,7 @@ namespace AEC_Batch_Data_Haravester.Reporting
                 detail: null,
                 elapsedMs,
                 rows,
+                attributes,
                 skipped,
                 unitName,
                 unitCode);
@@ -57,6 +58,7 @@ namespace AEC_Batch_Data_Haravester.Reporting
                 detail,
                 elapsedMs,
                 rows: 0,
+                attributes: 0,
                 skipped: 0,
                 unitName: null,
                 unitCode: null);
@@ -69,6 +71,7 @@ namespace AEC_Batch_Data_Haravester.Reporting
             string? detail,
             long elapsedMs,
             int rows,
+            int attributes,
             int skipped,
             string? unitName,
             int? unitCode)
@@ -85,7 +88,8 @@ namespace AEC_Batch_Data_Haravester.Reporting
                 TryDelete(success ? failPath : okPath);
 
                 string json = StatusJson.Build(
-                    success, drawingName, message, elapsedMs, rows, skipped, unitName, unitCode);
+                    success, drawingName, message, elapsedMs, rows, attributes, skipped,
+                    unitName, unitCode);
 
                 File.WriteAllText(success ? okPath : failPath, json);
 

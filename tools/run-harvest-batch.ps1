@@ -120,7 +120,11 @@ function Test-Reported([string] $key) {
 }
 
 function Test-Complete([string] $key) {
+    # Both files are part of one drawing's output: entity rows, attribute rows, and the
+    # verdict. A resume must not treat a drawing from before Phase 5, or a kill between
+    # the two publishes, as finished.
     return (Test-Path (Join-Path $rowsDir ($key + '.csv'))) -and
+           (Test-Path (Join-Path $rowsDir ($key + '.attributes.csv'))) -and
            (Test-Path (Join-Path $statusDir ($key + '.ok')))
 }
 

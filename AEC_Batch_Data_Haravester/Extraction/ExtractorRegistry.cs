@@ -27,10 +27,19 @@ namespace AEC_Batch_Data_Haravester.Extraction
         /// <summary>The extractors the harvester ships with.</summary>
         public static ExtractorRegistry CreateDefault()
         {
+            // Registration order does not affect matching: the registry is keyed by class
+            // and walks the inheritance chain. Adding an entity type is therefore one new
+            // extractor class and one line here.
             return new ExtractorRegistry(new IEntityExtractor[]
             {
                 new BlockExtractor(),
-                new PolylineExtractor()
+                new PolylineExtractor(),
+                new LineExtractor(),
+                new ArcExtractor(),
+                new CircleExtractor(),
+                new DbTextExtractor(),
+                new MTextExtractor(),
+                new SolidExtractor()
             });
         }
 

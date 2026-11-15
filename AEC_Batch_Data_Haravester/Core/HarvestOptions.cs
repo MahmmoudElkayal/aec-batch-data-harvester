@@ -16,6 +16,19 @@ namespace AEC_Batch_Data_Haravester.Core
         public const string RootFolderVariable = "AEC_HARVEST_ROOT";
         public const string KeyVariable = "AEC_HARVEST_KEY";
 
+        /// <summary>
+        /// Opt-in Excel formula guard. Off by default because it alters real values: the
+        /// measured corpus uses "+", "-" and "@" as legal leading characters of layer
+        /// names, so prefixing them with an apostrophe changes what the drawing says.
+        /// </summary>
+        public const string ExcelSafeVariable = "AEC_HARVEST_EXCEL_SAFE";
+
+        /// <summary>
+        /// Opt-in UTF-8 BOM. Windows Excel reads BOM-less UTF-8 as the local ANSI code
+        /// page, so a file with non-ASCII text can look wrong; parsers do not need it.
+        /// </summary>
+        public const string Utf8BomVariable = "AEC_HARVEST_UTF8_BOM";
+
         /// <summary>Set by the supervisor to the chunk manifest the engine should process.</summary>
         public const string BatchManifestVariable = "AEC_HARVEST_BATCH";
 
@@ -42,10 +55,12 @@ namespace AEC_Batch_Data_Haravester.Core
         /// </summary>
         public const string BatchSummaryFileName = "_batch.json";
 
-        private HarvestOptions(string outputFolder, string key)
+        private HarvestOptions(string outputFolder, string key, bool excelSafe, bool utf8Bom)
         {
             OutputFolder = outputFolder;
             Key = key;
+            ExcelSafe = excelSafe;
+            Utf8Bom = utf8Bom;
         }
 
         /// <summary>Where rows and status files go. Never empty.</summary>
@@ -60,6 +75,12 @@ namespace AEC_Batch_Data_Haravester.Core
         /// there is one answer to "which files belong to this drawing".
         /// </summary>
         public string Key { get; }
+
+        /// <summary>Prefix a text field that starts with = + - @ or a tab, for Excel.</summary>
+        public bool ExcelSafe { get; }
+
+        /// <summary>Write a UTF-8 BOM at the start of each CSV file.</summary>
+        public bool Utf8Bom { get; }
 
         public string StatusFolder => Path.Combine(OutputFolder, StatusFolderName);
 
@@ -95,7 +116,17 @@ namespace AEC_Batch_Data_Haravester.Core
                     "the batch manifest supplied a blank key; the plugin will not invent one.");
             }
 
-            return new HarvestOptions(ResolveOutputFolder(), key);
+            return new HarvestOptions(ResolveOutputFolder(), key, IsEnabled(ExcelSafeVariable), IsEnabled(Utf8BomVariable));
+        }
+
+        /// <summary>
+        /// A switch is on only for the value "1". Anything else - including "true" -
+        /// is off, so a typo cannot silently rewrite values or add a BOM.
+        /// </summary>
+        private static bool IsEnabled(string variable)
+        {
+            return string.Equals(
+                Environment.GetEnvironmentVariable(variable)?.Trim(), "1", StringComparison.Ordinal);
         }
 
         /// <summary>

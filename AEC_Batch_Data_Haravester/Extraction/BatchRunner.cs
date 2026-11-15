@@ -36,6 +36,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
             IReadOnlyList<BatchEntry> entries = BatchManifest.ReadFile(manifestPath);
             string outputFolder = HarvestOptions.ResolveOutputFolder();
             var formatter = new CsvFormatter();
+            var attributeFormatter = new AttributeCsvFormatter();
             var marker = new CurrentDrawingMarker(
                 Path.Combine(outputFolder, HarvestOptions.StatusFolderName));
 
@@ -54,7 +55,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 try
                 {
                     HarvestOptions options = HarvestOptions.FromKey(entry.Key);
-                    HarvestResult result = HarvestOne(entry, options, formatter);
+                    HarvestResult result = HarvestOne(entry, options, formatter, attributeFormatter);
 
                     stopwatch.Stop();
 
@@ -62,18 +63,21 @@ namespace AEC_Batch_Data_Haravester.Extraction
                         Path.GetFileName(entry.Path),
                         string.Format(
                             CultureInfo.InvariantCulture,
-                            "{0} rows, {1} skipped from {2}",
-                            result.RowsWritten, result.Skipped, Path.GetFileName(entry.Path)),
+                            "{0} rows, {1} attributes, {2} skipped from {3}",
+                            result.RowsWritten, result.AttributesWritten, result.Skipped,
+                            Path.GetFileName(entry.Path)),
                         stopwatch.ElapsedMilliseconds,
                         result.RowsWritten,
+                        result.AttributesWritten,
                         result.Skipped,
                         result.Unit,
                         result.UnitCode);
 
                     Console.WriteLine(string.Format(
                         CultureInfo.InvariantCulture,
-                        "[AEC] {0}: {1} rows in {2} ms",
-                        entry.Key, result.RowsWritten, stopwatch.ElapsedMilliseconds));
+                        "[AEC] {0}: {1} rows, {2} attributes in {3} ms",
+                        entry.Key, result.RowsWritten, result.AttributesWritten,
+                        stopwatch.ElapsedMilliseconds));
 
                     ok++;
                 }
@@ -121,7 +125,10 @@ namespace AEC_Batch_Data_Haravester.Extraction
         /// file is worse than a missing one, because a merge would publish it as data.
         /// </summary>
         private static HarvestResult HarvestOne(
-            BatchEntry entry, HarvestOptions options, CsvFormatter formatter)
+            BatchEntry entry,
+            HarvestOptions options,
+            CsvFormatter formatter,
+            AttributeCsvFormatter attributeFormatter)
         {
             // A side database needs no Document and cannot disturb an open drawing. Read
             // share is deliberate: it fails loudly if AutoCAD has the file open for write,
@@ -129,8 +136,8 @@ namespace AEC_Batch_Data_Haravester.Extraction
             using var db = new Database(buildDefaultDrawing: false, noDocument: true);
             db.ReadDwgFile(entry.Path, FileShare.Read, allowCPConversion: true, password: "");
 
-            using var sink = new CsvRowSink(options, formatter);
-            HarvestResult result = new ModelSpaceScanner(Registry, Resolver)
+            using var sink = new CsvRowSink(options, formatter, attributeFormatter);
+            HarvestResult result = new DrawingScanner(Registry, Resolver)
                 .Scan(db, Path.GetFileName(entry.Path), sink);
 
             sink.Complete();
