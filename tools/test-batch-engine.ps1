@@ -301,6 +301,60 @@ try {
     finally {
         Remove-Item $proxyRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
+
+    # ------------------------------------------------------------------ 8
+    Write-Host ''
+    Write-Host '[8] a relocated -Root is where the engine writes'
+
+    # -Root relocates this script's own folders. The engine learns its output folder from the
+    # environment, so the supervisor has to carry -Root across the process boundary too;
+    # otherwise the work is written beside the plug-in DLL and this script reports "no status
+    # file" for drawings that actually succeeded.
+    $relocated = Join-Path $env:TEMP ('aec-root-' + [guid]::NewGuid().ToString('N'))
+    try {
+        $console = 'C:\Program Files\Autodesk\AutoCAD 2026\accoreconsole.exe'
+        if (-not (Test-Path $console)) {
+            Write-Host '    skip  accoreconsole.exe not installed; nothing to run'
+        }
+        else {
+            $source = Get-ChildItem $inputDir -Filter *.dwg -File |
+                Where-Object { $_.Name -notlike 'ZZ*' } | Select-Object -First 1
+            if (-not $source) {
+                Write-Host '    skip  no input drawing to relocate'
+            }
+            else {
+                New-Item -ItemType Directory -Path $relocated -Force | Out-Null
+                $key = 'relocated-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+                $copy = Join-Path $relocated ($key + '.dwg')
+                Copy-Item $source.FullName $copy
+                $relocatedManifest = Join-Path $relocated 'manifest.txt'
+                [System.IO.File]::WriteAllText($relocatedManifest,
+                    ($key + '|' + $copy + "`r`n"))
+
+                $relocatedOut = & powershell -NoProfile -ExecutionPolicy Bypass -File `
+                    (Join-Path $Root 'tools\run-harvest-batch.ps1') `
+                    -Root $relocated -Manifest $relocatedManifest `
+                    -Script (Join-Path $Root 'Scripts\HarvestBatch.scr') -Console $console `
+                    -TimeoutSeconds 60 -ChunkSize 1 -Parallel 1 2>&1 | Out-String
+                $relocatedCode = $LASTEXITCODE
+
+                Check ($relocatedCode -eq 0) "a relocated run exits 0 (was $relocatedCode)"
+                Check (Test-Path (Join-Path $relocated ('Output\_status\' + $key + '.ok'))) `
+                    'the verdict lands under the requested root'
+                Check (Test-Path (Join-Path $relocated ('Output\_rows\' + $key + '.csv'))) `
+                    'and so do its rows'
+
+                # The regression this section exists for: the engine resolving its output
+                # folder from the assembly instead of from the root it was given.
+                $binStatus = Join-Path $Root 'AEC_Batch_Data_Haravester\bin\Debug\net10.0-windows\Output\_status'
+                $stray = Get-ChildItem $binStatus -Filter ($key + '.*') -ErrorAction SilentlyContinue
+                Check (@($stray).Count -eq 0) 'nothing was written beside the plug-in DLL'
+            }
+        }
+    }
+    finally {
+        Remove-Item $relocated -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 finally {
     Remove-Broken

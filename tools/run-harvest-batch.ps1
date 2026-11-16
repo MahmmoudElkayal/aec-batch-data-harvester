@@ -224,6 +224,13 @@ function Start-ChunkProcess([string] $id, [int] $number, [object[]] $chunk,
     $psi.EnvironmentVariables['AEC_HARVEST_BATCH'] = $chunkFile
     $psi.EnvironmentVariables['AEC_HARVEST_CHUNK_ID'] = $id
 
+    # The engine resolves where to write from the environment, so a relocated -Root has to
+    # cross the process boundary. RunPipeline.bat exported these for the root it owns; a
+    # direct call to this script with -Root had no such export, and every drawing landed in
+    # the plug-in's bin\...\Output while the supervisor waited for files that never came.
+    $psi.EnvironmentVariables['AEC_HARVEST_ROOT'] = $Root
+    $psi.EnvironmentVariables['AEC_HARVEST_OUTPUT'] = $outputDir
+
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $psi
     [void]$process.Start()

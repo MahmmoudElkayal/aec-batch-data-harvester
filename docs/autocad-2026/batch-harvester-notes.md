@@ -119,6 +119,15 @@ output (matches `DATAEXTRACTION`), but less control over schema/flattening.
   installed; here they are not, so they arrive as `ACAD_PROXY_ENTITY`. The supervisor now
   prints them as a separate `Proxies :` line with the cause and both fixes rather than
   listing them as one more unextracted class.
+- `-Root` is carried into the Core Console process (`AEC_HARVEST_ROOT`,
+  `AEC_HARVEST_OUTPUT`) as well as used for the supervisor's own folders. Previously only
+  `RunPipeline.bat` exported those, so calling the supervisor directly with a relocated root
+  wrote every drawing beside the plug-in DLL and reported "no status file" for work that had
+  succeeded. `test-batch-engine` section 8 now proves the relocated case and asserts that
+  nothing lands beside the DLL.
 - A dynamic-block fixture is still outstanding. The read path is already correct; creating
   the fixture needs the desktop block editor, because the managed API exposes only
-  `DynamicBlockReferenceProperty*` and Core Console has no `BEDIT`.
+  `DynamicBlockReferenceProperty*` and Core Console has no `BEDIT`. Harvesting AutoCAD's own
+  `Sample\en-us\Dynamic Blocks\Multileader Tools.dwg` does show the read path working: the
+  block rows carry `_TagCircle - Metric`, `_DetailCallout - Metric`, ... rather than the
+  anonymous `*U...` definitions the references actually point at.

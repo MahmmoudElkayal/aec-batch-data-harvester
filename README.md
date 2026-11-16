@@ -282,6 +282,12 @@ These were found by testing, not by reading the docs:
    `AttributeDefinition`s with `Constant = true` must be read too.
 9. **`MText.Text`, not `MText.Contents`.** `Contents` carries the formatting codes; `Text`
    is documented as "the contents with formatting removed".
+10. **The engine learns its output folder from the environment, not from `-Root`.** The
+    supervisor computes `-Root\Output` itself, so it must also pass `AEC_HARVEST_ROOT` and
+    `AEC_HARVEST_OUTPUT` into the Core Console process. Without that, the engine falls back
+    to a folder beside the plug-in DLL and the supervisor waits forever for status files
+    that were written somewhere else - every drawing reported as "no status file" even
+    though each one had been harvested.
 
 ## Repository layout
 
