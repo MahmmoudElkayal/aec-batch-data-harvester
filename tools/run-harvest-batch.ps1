@@ -47,7 +47,7 @@ $summary   = Join-Path $statusDir '_batch.json'
 # The output contract this supervisor is willing to trust, in step with
 # HarvestSchema.Version (AEC_Batch_Data_Haravester\Core\HarvestSchema.cs).
 # tools\test-coverage.ps1 fails if the two drift apart.
-$SchemaVersion = 2
+$SchemaVersion = 3
 
 if (-not $Manifest) { $Manifest = Join-Path $outputDir 'manifest.txt' }
 if (-not $Script)   { $Script   = Join-Path $Root 'Scripts\HarvestBatch.scr' }

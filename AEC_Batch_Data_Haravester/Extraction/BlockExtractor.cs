@@ -22,21 +22,28 @@ namespace AEC_Batch_Data_Haravester.Extraction
         {
             var block = (BlockReference)entity;
             string handle = block.Handle.ToString();
+            BlockTableRecord? definition = BlockInfo.Definition(context.Transaction, block);
+
+            // A nested insertion's Position is in its owner block's microspace, so it is
+            // mapped through the context transform. At the top level that transform is
+            // identity and the value is exactly what it always was.
+            var position = context.TransformPoint(block.Position);
 
             var row = new HarvestRow(
                 Drawing: context.Drawing,
                 Space: context.Space,
                 EntityType: EntityKind.Block.ToString(),
                 Name: block.Name,
-                BlockDefinition: DefinitionName(context.Transaction, block),
+                BlockDefinition: BlockInfo.Name(definition),
                 Layer: block.Layer,
                 Handle: handle,
-                X: block.Position.X,
-                Y: block.Position.Y,
-                Z: block.Position.Z,
+                X: position.X,
+                Y: position.Y,
+                Z: position.Z,
                 Length: null,
                 Unit: context.Unit,
-                UnitCode: context.UnitCode);
+                UnitCode: context.UnitCode,
+                IsXref: BlockInfo.IsExternalReference(definition));
 
             return new EntityExtraction(new[] { row }, AllAttributes(block, context, handle));
         }
@@ -54,7 +61,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
         {
             List<HarvestAttributeRow> rows = Attributes(block, context, handle);
 
-            foreach (ConstantAttribute constant in context.ConstantAttributes(DefinitionId(block)))
+            foreach (ConstantAttribute constant in context.ConstantAttributes(BlockInfo.DefinitionId(block)))
             {
                 rows.Add(new HarvestAttributeRow(
                     Drawing: context.Drawing,
@@ -105,51 +112,6 @@ namespace AEC_Batch_Data_Haravester.Extraction
             }
 
             return rows;
-        }
-
-        /// <summary>
-        /// The block definition's real name. The dynamic-block branch lives in
-        /// <see cref="DefinitionId"/>; this only resolves the name and refuses to lose the
-        /// row when the definition is unreadable.
-        /// </summary>
-        private static string DefinitionName(Transaction tr, BlockReference block)
-        {
-            ObjectId definitionId = DefinitionId(block);
-            if (definitionId.IsNull)
-            {
-                return string.Empty;
-            }
-
-            try
-            {
-                return tr.GetObject(definitionId, OpenMode.ForRead) is BlockTableRecord definition
-                    ? definition.Name
-                    : string.Empty;
-            }
-            catch (AcException)
-            {
-                // A dangling or proxy definition must not lose the whole entity row.
-                return string.Empty;
-            }
-        }
-
-        /// <summary>
-        /// For a dynamic block, Name is an anonymous "*U12"-style name, so the definition
-        /// is resolved through DynamicBlockTableRecord. Every caller needs the same answer,
-        /// so the branch lives here once.
-        /// </summary>
-        private static ObjectId DefinitionId(BlockReference block)
-        {
-            try
-            {
-                return block.IsDynamicBlock
-                    ? block.DynamicBlockTableRecord
-                    : block.BlockTableRecord;
-            }
-            catch (AcException)
-            {
-                return ObjectId.Null;
-            }
         }
     }
 }

@@ -1,4 +1,5 @@
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using AEC_Batch_Data_Haravester.Core;
 
@@ -12,6 +13,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
         public EntityExtraction Extract(Entity entity, HarvestContext context)
         {
             var line = (Line)entity;
+            Point3d start = context.TransformPoint(line.StartPoint);
 
             // A line has two positions; the start point is the anchor, and Length carries
             // the extent. Exporting both endpoints would need a schema change.
@@ -23,10 +25,10 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 BlockDefinition: string.Empty,
                 Layer: line.Layer,
                 Handle: line.Handle.ToString(),
-                X: line.StartPoint.X,
-                Y: line.StartPoint.Y,
-                Z: line.StartPoint.Z,
-                Length: CurveLength.TryMeasure(line),
+                X: start.X,
+                Y: start.Y,
+                Z: start.Z,
+                Length: CurveLength.TryMeasure(line, context),
                 Unit: context.Unit,
                 UnitCode: context.UnitCode));
         }

@@ -138,7 +138,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
             db.ReadDwgFile(entry.Path, FileShare.Read, allowCPConversion: true, password: "");
 
             using var sink = new CsvRowSink(options, formatter, attributeFormatter);
-            HarvestResult result = new DrawingScanner(Registry, Resolver)
+            HarvestResult result = new DrawingScanner(Registry, Resolver, options.IncludeNestedBlocks)
                 .Scan(db, Path.GetFileName(entry.Path), sink);
 
             sink.Complete();

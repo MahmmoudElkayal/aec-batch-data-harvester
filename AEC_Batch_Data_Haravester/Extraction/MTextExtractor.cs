@@ -1,4 +1,5 @@
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using AEC_Batch_Data_Haravester.Core;
 
@@ -16,6 +17,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
         public EntityExtraction Extract(Entity entity, HarvestContext context)
         {
             var text = (MText)entity;
+            Point3d location = context.TransformPoint(text.Location);
 
             return EntityExtraction.FromRow(new HarvestRow(
                 Drawing: context.Drawing,
@@ -25,9 +27,9 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 BlockDefinition: string.Empty,
                 Layer: text.Layer,
                 Handle: text.Handle.ToString(),
-                X: text.Location.X,
-                Y: text.Location.Y,
-                Z: text.Location.Z,
+                X: location.X,
+                Y: location.Y,
+                Z: location.Z,
                 Length: null,
                 Unit: context.Unit,
                 UnitCode: context.UnitCode));

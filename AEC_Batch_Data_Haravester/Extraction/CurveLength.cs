@@ -1,5 +1,6 @@
 using System;
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
 using AcException = Autodesk.AutoCAD.Runtime.Exception;
 
 namespace AEC_Batch_Data_Haravester.Extraction
@@ -13,16 +14,30 @@ namespace AEC_Batch_Data_Haravester.Extraction
     /// not put Length on Curve: Polyline, Line and Arc each expose their own, and a circle
     /// is measured by its circumference. One helper keeps the failure policy identical
     /// without pretending the API is more uniform than it is.
+    ///
+    /// Every measurement takes the context so a nested block's length is reported in
+    /// drawing units rather than in the block's microspace. A line is measured from its
+    /// transformed endpoints, which stays exact under a non-uniform block scale; the other
+    /// curves use the transform's scalar scale.
     /// </summary>
     internal static class CurveLength
     {
-        public static double? TryMeasure(Polyline polyline) => Try(() => polyline.Length);
+        public static double? TryMeasure(Polyline polyline, HarvestContext context)
+            => Try(() => context.ScaleLength(polyline.Length));
 
-        public static double? TryMeasure(Line line) => Try(() => line.Length);
+        public static double? TryMeasure(Line line, HarvestContext context)
+            => Try(() =>
+            {
+                Point3d start = context.TransformPoint(line.StartPoint);
+                Point3d end = context.TransformPoint(line.EndPoint);
+                return start.DistanceTo(end);
+            });
 
-        public static double? TryMeasure(Arc arc) => Try(() => arc.Length);
+        public static double? TryMeasure(Arc arc, HarvestContext context)
+            => Try(() => context.ScaleLength(arc.Length));
 
-        public static double? TryMeasure(Circle circle) => Try(() => circle.Circumference);
+        public static double? TryMeasure(Circle circle, HarvestContext context)
+            => Try(() => context.ScaleLength(circle.Circumference));
 
         private static double? Try(Func<double> read)
         {

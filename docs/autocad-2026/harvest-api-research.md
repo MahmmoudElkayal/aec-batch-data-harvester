@@ -13,7 +13,7 @@ managed members that 2026 ships; where a member was renamed or added, the 2026 i
 | 1 | Unsupported entities are invisible | No API reports "what you skipped"; the registry miss is the only signal | **Changed** |
 | 2 | Constant attributes are never emitted | `AttributeDefinition.Constant` confirms no `Attribute` is created on insert | **Changed** |
 | 3 | MText is exported with formatting | `MText.Text` already strips formatting | Already correct |
-| 4 | Nested blocks and xrefs are invisible | `BlockTransform` and `IsFromExternalReference` exist; recursion is ours to write | Planned |
+| 4 | Nested blocks and xrefs are invisible | `BlockTransform`, `IsFromExternalReference` and `Database.ResolveXrefs` cover the walk and the external contents | **Changed** |
 | 5 | Schema is thin for takeoff | `Curve.Area`, `Hatch.Area`, `Polyline2d/3d : Curve` | Planned |
 | 6 | `/append` merges two extraction rules | No built-in contract version; we must write one | **Changed** |
 | 7 | Chunks run one at a time | Multiple `accoreconsole` processes are a documented pattern | Planned |
@@ -71,15 +71,18 @@ and inserts it; the run must contain `CTAG = CONST-VALUE, IsConstant = 1`. It do
 MText rows contain `Rudolph\nPolanski`, not `{\fArial|b0;Rudolph\PPolanski}`. No change was
 needed; the earlier gap list was wrong on this point.
 
-## 4. Nested blocks and xrefs — transform, do not guess
+## 4. Nested blocks and xrefs — implemented
 
 **Sources:** [`BlockReference.BlockTransform`](https://help.autodesk.com/cloudhelp/2022/ENU/OARX-ManagedRefGuide/files/OARX-ManagedRefGuide-Autodesk_AutoCAD_DatabaseServices_BlockReference_BlockTransform.html)
-— "the resulting MCS-to-drawing-WCS transform"; and
+— "the resulting MCS-to-drawing-WCS transform";
 [`BlockTableRecord.IsFromExternalReference`](https://help.autodesk.com/cloudhelp/2022/ENU/OARX-ManagedRefGuide/files/OARX-ManagedRefGuide-Autodesk_AutoCAD_DatabaseServices_BlockTableRecord_IsFromExternalReference.html)
-— "Returns true if the block table record is describing an xref drawing."
+— "Returns true if the block table record is describing an xref drawing"; and
+[`Database.ResolveXrefs`](https://help.autodesk.com/cloudhelp/2023/ENU/OARX-ManagedRefGuide/files/OARX-ManagedRefGuide-Autodesk_AutoCAD_DatabaseServices_Database_ResolveXrefs__MarshalAsUnmanagedType_U1__bool__MarshalAsUnmanagedType_U1__bool.html)
+— "resolves existing xrefs in the working database … available to non-AutoCAD-based host
+applications."
 
-The design that follows is a depth-first walk of the definition with:
-- a visited `ObjectId` set and a depth cap, because a block can contain itself;
+The walk is depth-first over the definition, with:
+- a per-path visited `ObjectId` set and a depth cap of 8, because a block can contain itself;
 - `BlockTransform` composed down the chain (`parent * child`) so a nested insertion point is
   reported in drawing coordinates, not in the block's microspace;
 - `IsFromExternalReference` recorded on the row, so an xref block is not mistaken for a
@@ -87,8 +90,30 @@ The design that follows is a depth-first walk of the definition with:
 - recursion **off by default** and on by `AEC_HARVEST_NESTED=1`, because it multiplies rows
   and should be an explicit choice.
 
-Not implemented yet. It changes row counts for any drawing with block geometry, so it lands
-with a schema bump and a regenerated baseline.
+**Two findings changed the design.**
+
+1. `Point3d.TransformBy(M)` is the column-vector product `M × P` ("Result is the same as
+   setToProduct(leftSide, *this)"), so a child's transform is `parent * child`. The reversed
+   order rotates nested geometry about the wrong origin.
+2. A side database opened with `ReadDwgFile` contains the xref's `BlockTableRecord` but no
+   children; the record resolves only when `Database.ResolveXrefs` is called. Without it the
+   xref row is marked `IsXref=1` and its contents stay invisible. The scanner resolves xrefs
+   only on the nested path, and a missing file is caught: the block row survives, its
+   children are simply unavailable.
+
+**Change:** `DrawingScanner` recurses and stamps `Container`/`Depth`/`IsXref` on every row
+after extraction, so no extractor has to know about nesting; `HarvestContext` carries the
+composed transform and the ancestor chain; `BlockInfo` centralises definition/xref lookup;
+every point extractor transforms its point, and `CurveLength` measures a line from transformed
+endpoints (exact under non-uniform scale) or scales other curves by `Matrix3d.GetScale()`.
+Schema 3 adds the columns, and both CSVs carry `Container`.
+
+**Proof:** the acceptance fixture places a block containing a line and a circle at
+`(100,100)` with scale 2, and attaches a five-unit xref line at `(200,200)`. A default run
+reports only the two block rows; the nested run reports the line at `100,100` with length
+`20.000`, the circle centre at `110,110` with circumference `25.133`, and the xref line at
+`200,200` with length `5.000`, `Container=xref-source@<handle>` and `IsXref=1`. The default
+corpus still produces 6,748/219 rows; the schema-3 re-capture changed only the new columns.
 
 ## 5. Schema depth — one curve fallback, not eight extractors
 
@@ -104,7 +129,7 @@ keep their named rows. `Curve.Area` is defined for closed planar curves and thro
 ones, so the extractor must catch and leave area blank.
 
 `Hatch.Area` exists for the same reason and is the next-highest-value entity: hatches are
-where area takeoff usually lives. This needs an `Area` column (schema 3), so it is planned
+where area takeoff usually lives. Both need an `Area` column (schema 4), so they land together
 rather than half-shipped.
 
 ## 6. Resume must be schema-aware — implemented
@@ -113,10 +138,12 @@ There is no AutoCAD API for "is this result still valid"; it is a contract we ow
 status file is the contract (`README`, "the status file is authoritative"), so the version
 belongs there.
 
-**Change:** `Core/HarvestSchema.cs` defines `Version = 2` and the tool version;
+**Change:** `Core/HarvestSchema.cs` defines `Version = 3` and the tool version;
 `StatusJson` writes `schema` and `tool` into every verdict; `run-harvest-batch.ps1` refuses
 an `.ok` whose `schema` differs, so `/append` re-harvests it instead of merging it.
 `tools/test-coverage.ps1` reads both constants from source and fails if they drift apart.
+Schema 2 added the unsupported census and constant attributes; schema 3 added the nested
+provenance columns.
 
 **Proof:** setting one verdict back to `schema:1` and running `RunPipeline.bat /append /q`
 re-harvested exactly that drawing (`ms` 11 → 46) and left the other two untouched

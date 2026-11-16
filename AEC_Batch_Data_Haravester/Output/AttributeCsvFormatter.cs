@@ -24,6 +24,7 @@ namespace AEC_Batch_Data_Haravester.Output
         {
             ("Drawing",      r => r.Drawing),
             ("EntityHandle", r => r.EntityHandle),
+            ("Container",    r => r.Container),
             ("Tag",          r => r.Tag),
             ("Value",        r => r.Value),
             ("IsConstant",   r => r.IsConstant ? "1" : "0")

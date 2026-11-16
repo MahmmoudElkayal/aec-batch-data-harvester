@@ -1,4 +1,5 @@
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using AEC_Batch_Data_Haravester.Core;
 
@@ -16,6 +17,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
         public EntityExtraction Extract(Entity entity, HarvestContext context)
         {
             var circle = (Circle)entity;
+            Point3d center = context.TransformPoint(circle.Center);
 
             return EntityExtraction.FromRow(new HarvestRow(
                 Drawing: context.Drawing,
@@ -25,10 +27,10 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 BlockDefinition: string.Empty,
                 Layer: circle.Layer,
                 Handle: circle.Handle.ToString(),
-                X: circle.Center.X,
-                Y: circle.Center.Y,
-                Z: circle.Center.Z,
-                Length: CurveLength.TryMeasure(circle),
+                X: center.X,
+                Y: center.Y,
+                Z: center.Z,
+                Length: CurveLength.TryMeasure(circle, context),
                 Unit: context.Unit,
                 UnitCode: context.UnitCode));
         }

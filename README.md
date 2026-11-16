@@ -11,8 +11,9 @@ is what makes unattended batch processing possible.
 
 > **Status: working end-to-end prototype.** Verified against 3 sample drawings:
 > **6,748 entity rows and 219 attribute rows, 0 duplicates, 39–77 ms of engine time per
-> drawing.** Every entity type in the corpus census is extracted; nested blocks, xrefs and
-> vertical AEC objects are still out of scope.
+> drawing.** Every entity type in the corpus census is extracted. Nested blocks and xref
+> contents are available behind `AEC_HARVEST_NESTED=1`; vertical AEC objects are still out of
+> scope.
 
 ---
 
@@ -105,15 +106,46 @@ processed / succeeded / failed summary.
 | `BlockDefinition` | resolved definition name (blocks only; dynamic blocks resolve through `DynamicBlockTableRecord`) |
 | `Layer` | object layer |
 | `Handle` | DWG handle, for traceability back to the drawing |
-| `X` `Y` `Z` | insertion point / centre / start point, per type |
+| `Container` | block path that contains the row, `Name@Handle > Name@Handle`; blank at the top level |
+| `Depth` | number of block references above the row; `0` at the top level |
+| `IsXref` | `1` when the row is, or is inside, an external reference |
+| `X` `Y` `Z` | insertion point / centre / start point, per type, in drawing coordinates |
 | `Length` | curve length (polyline, line, arc, circle); blank where it has no meaning |
 | `Unit` `UnitCode` | drawing `INSUNITS`, on every row |
 
 ```csv
-Drawing,Space,EntityType,Name,BlockDefinition,Layer,Handle,X,Y,Z,Length,Unit,UnitCode
-Assembly Sample.dwg,Model,Polyline,,,0,A4B,,,,306.124,Inches,1
-Assembly Sample.dwg,Model,Block,BLURB,BLURB,0,A4C,13.500,2.100,0.000,,Inches,1
+Drawing,Space,EntityType,Name,BlockDefinition,Layer,Handle,Container,Depth,IsXref,X,Y,Z,Length,Unit,UnitCode
+Assembly Sample.dwg,Model,Line,,,0,A47,,0,0,90.927,60.400,0.000,89.927,Undefined,0
+Floor Plan Sample.dwg,Model,Block,DR-36,DR-36,E-F-DOOR,6C,,0,0,2827.000,1911.000,0.000,,Inches,1
 ```
+
+`Container`, `Depth` and `IsXref` describe where a row came from. They stay blank/`0` unless
+nested traversal is on, so a default run's rows are unchanged by the column addition.
+
+### Nested blocks and xrefs (opt-in)
+
+Set `AEC_HARVEST_NESTED=1` to descend into block definitions. Every entity inside a
+definition is reported with the insertion transform applied, so its point is a drawing
+coordinate rather than a coordinate in the block's private space; lengths are scaled with the
+transform as well. The ancestor chain is recorded, and the handle in it makes two placements of
+the same inner definition distinguishable:
+
+```csv
+Drawing,Space,EntityType,Name,BlockDefinition,Layer,Handle,Container,Depth,IsXref,X,Y,Z,Length,Unit,UnitCode
+Plan.dwg,Model,Line,,,0,B21,Door@2A > Hinge@3B,2,0,101.500,99.000,0.000,4.000,Millimeters,4
+```
+
+The switch is off by default because recursion multiplies rows on any drawing whose blocks
+contain geometry, and because the same definition object is reached once per placement. A
+self-referencing block cannot make the walk run forever: each path carries a visited set, and
+the chain stops at eight levels.
+
+Xrefs are marked even when traversal is off: `IsXref` comes from
+`BlockTableRecord.IsFromExternalReference`, so the block row says it came from another file.
+With `AEC_HARVEST_NESTED=1` the runner also calls `Database.ResolveXrefs`, because a side
+database opened with `ReadDwgFile` has the xref record but none of its contents. If the xref
+file is missing the resolution is skipped and the block row is still reported; the geometry is
+simply unavailable. A row inside an xref carries `IsXref=1` and the xref in its `Container`.
 
 ### `Output\Extracted_Attributes.csv` — one row per block attribute
 
@@ -121,13 +153,14 @@ Assembly Sample.dwg,Model,Block,BLURB,BLURB,0,A4C,13.500,2.100,0.000,,Inches,1
 |---|---|
 | `Drawing` | source DWG file name |
 | `EntityHandle` | handle of the owning block reference — joins to `Extracted_BOM.csv` |
+| `Container` | block path of the owning reference, same format as the entity file |
 | `Tag` | attribute tag, verbatim (a tag of `#` occurs in the corpus) |
 | `Value` | attribute text |
-| `IsConstant` | `1` or `0` |
+| `IsConstant` | `1` or `0`; constant values are read from the block definition |
 
 ```csv
-Drawing,EntityHandle,Tag,Value,IsConstant
-Assembly Sample.dwg,A4C,PART NO,CE003902,0
+Drawing,EntityHandle,Container,Tag,Value,IsConstant
+Assembly Sample.dwg,12F5,,3,CE003902,0
 ```
 
 Text and attribute values are written on one physical line: a raw newline is rendered as the

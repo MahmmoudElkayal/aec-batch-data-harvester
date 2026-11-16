@@ -582,12 +582,28 @@ namespace Harvest.Checks
                     ?? Expect(fields[4] == "Bath Tub - 26 x 60 in.", "definition field")
                     ?? Expect(fields[5] == "0", "layer field")
                     ?? Expect(fields[6] == "47", "handle field")
-                    ?? Expect(fields[7] == "20.593", "X field")
-                    ?? Expect(fields[8] == "287.084", "Y field")
-                    ?? Expect(fields[9] == "0.000", "Z field")
-                    ?? Expect(fields[10] == string.Empty, "polyline-only Length must be blank")
-                    ?? Expect(fields[11] == "Inches", "unit field")
-                    ?? Expect(fields[12] == "1", "unit code field");
+                    ?? Expect(fields[7] == string.Empty, "top-level container must be blank")
+                    ?? Expect(fields[8] == "0", "top-level depth")
+                    ?? Expect(fields[9] == "0", "top-level xref flag")
+                    ?? Expect(fields[10] == "20.593", "X field")
+                    ?? Expect(fields[11] == "287.084", "Y field")
+                    ?? Expect(fields[12] == "0.000", "Z field")
+                    ?? Expect(fields[13] == string.Empty, "polyline-only Length must be blank")
+                    ?? Expect(fields[14] == "Inches", "unit field")
+                    ?? Expect(fields[15] == "1", "unit code field");
+            });
+
+            Check("nested provenance is formatted, not inferred by the reader", () =>
+            {
+                var row = new HarvestRow(
+                    "D.dwg", "Model", "Line", "", "", "0", "A1", 0, 0, 0, 1, "Inches", 1,
+                    Container: "Door@2A > Hinge@3B", Depth: 2, IsXref: true);
+
+                string[] fields = SplitCsv(formatter.Row(row));
+
+                return Expect(fields[7] == "Door@2A > Hinge@3B", "container")
+                    ?? Expect(fields[8] == "2", "depth")
+                    ?? Expect(fields[9] == "1", "xref flag");
             });
 
             Check("a polyline row leaves the block fields blank", () =>
@@ -603,9 +619,9 @@ namespace Harvest.Checks
                 return Expect(fields.Length == CsvFormatter.ColumnNames().Length, "field count")
                     ?? Expect(fields[3] == string.Empty, "name must be blank")
                     ?? Expect(fields[4] == string.Empty, "definition must be blank")
-                    ?? Expect(fields[7] == string.Empty, "X must be blank")
-                    ?? Expect(fields[10] == "306.124", "length")
-                    ?? Expect(fields[12] == "0", "unit code");
+                    ?? Expect(fields[10] == string.Empty, "X must be blank")
+                    ?? Expect(fields[13] == "306.124", "length")
+                    ?? Expect(fields[15] == "0", "unit code");
             });
 
             Check("header and row use the same column list", () =>
@@ -629,7 +645,7 @@ namespace Harvest.Checks
                 string[] fields = SplitCsv(formatter.Row(row));
 
                 return Expect(fields[5] == "-Layer", "layer changed with the guard off")
-                    ?? Expect(fields[7] == "-5.500", "negative X changed with the guard off");
+                    ?? Expect(fields[10] == "-5.500", "negative X changed with the guard off");
             });
 
             Check("the Excel guard fires on text but never on a number", () =>
@@ -643,9 +659,9 @@ namespace Harvest.Checks
                 // An apostrophe on a numeric field would stop it being a number, which is
                 // why the guard is applied per column rather than to the whole row.
                 return Expect(fields[5] == "'-Layer", "text layer not guarded")
-                    ?? Expect(fields[7] == "-5.500", "a negative coordinate must stay numeric")
-                    ?? Expect(fields[10] == "1.000", "a positive length must stay numeric")
-                    ?? Expect(fields[12] == "1", "the unit code must stay numeric");
+                    ?? Expect(fields[10] == "-5.500", "a negative coordinate must stay numeric")
+                    ?? Expect(fields[13] == "1.000", "a positive length must stay numeric")
+                    ?? Expect(fields[15] == "1", "the unit code must stay numeric");
             });
 
             Check("the attribute guard is opt-in too", () =>
@@ -655,16 +671,17 @@ namespace Harvest.Checks
                 string[] plain = SplitCsv(new AttributeCsvFormatter().Row(row));
                 string[] guarded = SplitCsv(new AttributeCsvFormatter(excelSafe: true).Row(row));
 
-                return Expect(plain[2] == "-TAG" && plain[3] == "=1+1",
+                return Expect(plain[3] == "-TAG" && plain[4] == "=1+1",
                         "the default attribute formatter changed a value")
-                    ?? Expect(guarded[2] == "'-TAG", "tag not guarded")
-                    ?? Expect(guarded[3] == "'=1+1", "value not guarded")
-                    ?? Expect(guarded[4] == "0", "the constant flag must not be guarded");
+                    ?? Expect(guarded[3] == "'-TAG", "tag not guarded")
+                    ?? Expect(guarded[4] == "'=1+1", "value not guarded")
+                    ?? Expect(guarded[5] == "0", "the constant flag must not be guarded");
             });
 
             Check("attribute schema is the documented long format", () =>
             {
-                string[] expected = { "Drawing", "EntityHandle", "Tag", "Value", "IsConstant" };
+                string[] expected =
+                    { "Drawing", "EntityHandle", "Container", "Tag", "Value", "IsConstant" };
                 string[] actual = AttributeCsvFormatter.ColumnNames();
 
                 return Expect(actual.SequenceEqual(expected),
@@ -684,12 +701,13 @@ namespace Harvest.Checks
 
                 string[] fields = SplitCsv(formatter2.Row(row));
 
-                return Expect(fields.Length == 5, "field count")
+                return Expect(fields.Length == 6, "field count")
                     ?? Expect(fields[0] == "Floor, Plan.dwg", "drawing")
                     ?? Expect(fields[1] == "2A7", "entity handle")
-                    ?? Expect(fields[2] == "#", "tag may be '#'")
-                    ?? Expect(fields[3] == "RIVET #511 X 3/16, \"long\"", "value")
-                    ?? Expect(fields[4] == "0", "false must be 0");
+                    ?? Expect(fields[2] == string.Empty, "top-level container")
+                    ?? Expect(fields[3] == "#", "tag may be '#'")
+                    ?? Expect(fields[4] == "RIVET #511 X 3/16, \"long\"", "value")
+                    ?? Expect(fields[5] == "0", "false must be 0");
             });
 
             Check("a constant attribute is 1", () =>
@@ -698,8 +716,8 @@ namespace Harvest.Checks
                 var row = new HarvestAttributeRow("D.dwg", "1", "TAG", "", IsConstant: true);
                 string[] fields = SplitCsv(formatter2.Row(row));
 
-                return Expect(fields[4] == "1", "true must be 1")
-                    ?? Expect(fields[3] == string.Empty, "an empty value stays empty");
+                return Expect(fields[5] == "1", "true must be 1")
+                    ?? Expect(fields[4] == string.Empty, "an empty value stays empty");
             });
         }
 

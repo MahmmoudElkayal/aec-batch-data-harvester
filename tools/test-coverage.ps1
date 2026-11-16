@@ -183,16 +183,59 @@ try {
             $fixture = Join-Path $scratch 'Paper Probe.dwg'
             Copy-Item $source.FullName $fixture
 
+            # A second, deliberately tiny drawing to attach as an xref: one 5-unit line
+            # at the origin. Erasing the copied sample's top-level entities keeps the xref
+            # cheap; its block definitions are irrelevant to this assertion.
+            $xrefSource = Join-Path $scratch 'xref-source.dwg'
+            Copy-Item $source.FullName $xrefSource
+
+            $runCore = {
+                param([string] $dwgPath, [string] $scriptPath, [string] $logPath)
+                $stdin = Join-Path $scratch 'empty.stdin'
+                [System.IO.File]::WriteAllText($stdin, '')
+                $arguments = '/i "' + $dwgPath + '" /s "' + $scriptPath + '" /l en-US'
+                Start-Process -FilePath $console -ArgumentList $arguments `
+                    -RedirectStandardInput $stdin -RedirectStandardOutput $logPath `
+                    -RedirectStandardError ($logPath + '.err') -NoNewWindow -Wait | Out-Null
+            }
+
+            $xrefScript = Join-Path $scratch 'make-xref.scr'
+            $xrefLines = @(
+                '(setvar "CTAB" "Model")',
+                '(command "_.ERASE" "_ALL" "")',
+                '(setvar "CTAB" "Layout1")',
+                '(command "_.ERASE" "_ALL" "")',
+                '(setvar "CTAB" "Model")',
+                '(entmake (list (cons 0 "LINE") (cons 100 "AcDbEntity") (cons 100 "AcDbLine") (cons 8 "0") (cons 10 (list 0.0 0.0 0.0)) (cons 11 (list 5.0 0.0 0.0))))',
+                '(command "_.QSAVE")'
+            )
+            [System.IO.File]::WriteAllText(
+                $xrefScript, (($xrefLines -join "`r`n") + "`r`n"),
+                (New-Object System.Text.UTF8Encoding($false)))
+
             # entmake with a 410 group places the entity in the named layout, independent
             # of what is visible in the editor. The 410 value is the current tab name.
             $editScript = Join-Path $scratch 'make.scr'
-            # Four probe objects in one drawing:
+            # Seven probe objects in one drawing:
             #   TEXT  - paper space is traversed (section 4)
             #   RAY   - an unsupported class is counted, not silently dropped (section 6)
             #   INSERT of CONSTPROBE - a constant attribute is read from the definition
-            #          (section 7). Constant attributes are never copied onto the reference,
+            #          (section 6). Constant attributes are never copied onto the reference,
             #          so only a definition read can find this value.
+            #   INSERT of NESTEDPROBE - block geometry is traversed only when nested
+            #          harvesting is on, and its line/circle arrive with the insertion
+            #          transform applied and a Container path (section 4b).
+            #   XREF of xref-source - the block row says IsXref=1 immediately; the external
+            #          line becomes visible only when nested harvesting resolves the xref
+            #          (section 4c).
             $lines = @(
+                '(setvar "CTAB" "Model")',
+                '(entmake (list (cons 0 "BLOCK") (cons 2 "NESTEDPROBE") (cons 70 0) (cons 10 (list 0.0 0.0 0.0))))',
+                '(entmake (list (cons 0 "LINE") (cons 100 "AcDbEntity") (cons 100 "AcDbLine") (cons 8 "0") (cons 10 (list 0.0 0.0 0.0)) (cons 11 (list 10.0 0.0 0.0))))',
+                '(entmake (list (cons 0 "CIRCLE") (cons 100 "AcDbEntity") (cons 100 "AcDbCircle") (cons 8 "0") (cons 10 (list 5.0 5.0 0.0)) (cons 40 2.0)))',
+                '(entmake (list (cons 0 "ENDBLK")))',
+                '(entmake (list (cons 0 "INSERT") (cons 8 "0") (cons 2 "NESTEDPROBE") (cons 10 (list 100.0 100.0 0.0)) (cons 41 2.0) (cons 42 2.0) (cons 43 2.0)))',
+                ('(command "_.-XREF" "_A" "' + ($xrefSource -replace '\\', '/') + '" (list 200.0 200.0 0.0) 1.0 1.0 0.0)'),
                 '(setvar "CTAB" "Layout1")',
                 '(entmake (list (cons 0 "TEXT") (cons 8 "0") (cons 10 (list 5.0 5.0 0.0)) (cons 40 0.25) (cons 1 "PAPER-SPACE-PROBE") (cons 410 (getvar "CTAB"))))',
                 '(entmake (list (cons 0 "RAY") (cons 100 "AcDbEntity") (cons 100 "AcDbRay") (cons 8 "0") (cons 10 (list 0.0 0.0 0.0)) (cons 11 (list 1.0 0.0 0.0)) (cons 410 (getvar "CTAB"))))',
@@ -206,18 +249,13 @@ try {
                 $editScript, (($lines -join "`r`n") + "`r`n"),
                 (New-Object System.Text.UTF8Encoding($false)))
 
-            $stdin = Join-Path $scratch 'empty.stdin'
-            [System.IO.File]::WriteAllText($stdin, '')
             $editLog = Join-Path $scratch 'edit.log'
-            $editErr = Join-Path $scratch 'edit.err'
 
-            $arguments = '/i "' + $fixture + '" /s "' + $editScript + '" /l en-US'
             $previousEap = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
             try {
-                Start-Process -FilePath $console -ArgumentList $arguments `
-                    -RedirectStandardInput $stdin -RedirectStandardOutput $editLog `
-                    -RedirectStandardError $editErr -NoNewWindow -Wait | Out-Null
+                & $runCore $xrefSource $xrefScript (Join-Path $scratch 'xref.log')
+                & $runCore $fixture $editScript $editLog
             }
             finally {
                 $ErrorActionPreference = $previousEap
@@ -287,7 +325,135 @@ try {
             Check ($constant.Count -eq 1) `
                 ("a constant attribute is read from the definition (found {0})" -f $constant.Count)
 
-            if ($found.Count -eq 0) {
+            # ------------------------------------------------ 4b nested traversal
+            # The default run must not grow rows because a block contains geometry:
+            # recursion is opt-in and off unless AEC_HARVEST_NESTED is exactly "1".
+            $fixtureRows = @(Import-Csv $probeRows)
+            $nestedParent = @($fixtureRows |
+                Where-Object { $_.EntityType -eq 'Block' -and $_.Name -eq 'NESTEDPROBE' })
+            Check ($nestedParent.Count -eq 1) `
+                ("the nested probe block is placed once (found {0})" -f $nestedParent.Count)
+
+            $unexpectedNested = @($fixtureRows | Where-Object { $_.Container -like 'NESTEDPROBE@*' })
+            Check ($unexpectedNested.Count -eq 0) `
+                ("nested rows stay out of a default run (found {0})" -f $unexpectedNested.Count)
+
+            # ---------------------------------------------- 4c xref marking
+            # Attaching an xref creates a block reference whose definition is external.
+            # The row can say so without opening the other file, and its children must
+            # stay out of a default run just like local block geometry.
+            $xrefBlock = @($fixtureRows |
+                Where-Object { $_.EntityType -eq 'Block' -and $_.Name -eq 'xref-source' })
+            Check ($xrefBlock.Count -eq 1) `
+                ("the xref is one block row (found {0})" -f $xrefBlock.Count)
+            if ($xrefBlock.Count -eq 1) {
+                Check ($xrefBlock[0].IsXref -eq '1') `
+                    ("the xref row is marked IsXref=1 (found {0})" -f $xrefBlock[0].IsXref)
+                Check ($xrefBlock[0].Depth -eq '0') `
+                    ("the xref attachment itself is depth 0 (found {0})" -f $xrefBlock[0].Depth)
+                Check ($xrefBlock[0].X -eq '200.000' -and $xrefBlock[0].Y -eq '200.000') `
+                    ("the xref insertion point is reported ({0},{1})" -f $xrefBlock[0].X, $xrefBlock[0].Y)
+            }
+
+            $xrefDefaultChildren = @($fixtureRows | Where-Object { $_.Container -like 'xref-source@*' })
+            Check ($xrefDefaultChildren.Count -eq 0) `
+                ("xref contents stay out of a default run (found {0})" -f $xrefDefaultChildren.Count)
+
+            # The second harvest sets the opt-in switch and must report the block's line
+            # and circle, transformed into drawing coordinates and labelled with the
+            # placement that contains them. The default results are already loaded above,
+            # so the same output tree is cleared and re-harvested in place.
+            Remove-Item (Join-Path $probeOutput '_rows') -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item (Join-Path $probeOutput '_status') -Recurse -Force -ErrorAction SilentlyContinue
+
+            $env:AEC_HARVEST_NESTED = '1'
+            try {
+                $nestedOut = & powershell -NoProfile -ExecutionPolicy Bypass -File `
+                    (Join-Path $Root 'tools\run-harvest-batch.ps1') `
+                    -Root $scratch -Manifest $manifest -Script $probeScript `
+                    -Console $console 2>&1 | Out-String
+                $nestedCode = $LASTEXITCODE
+            }
+            finally {
+                Remove-Item Env:AEC_HARVEST_NESTED -ErrorAction SilentlyContinue
+            }
+
+            Check ($nestedCode -eq 0) "the nested fixture is harvested (exit was $nestedCode)"
+
+            $nestedRows = @()
+            if (Test-Path $probeRows) { $nestedRows = @(Import-Csv $probeRows) }
+
+            $expectedContainer = ''
+            if ($nestedParent.Count -eq 1) {
+                $expectedContainer = 'NESTEDPROBE@' + $nestedParent[0].Handle
+            }
+
+            $nestedLines = @()
+            $nestedCircles = @()
+            if ($expectedContainer) {
+                $nestedLines = @($nestedRows | Where-Object {
+                    $_.EntityType -eq 'Line' -and $_.Container -eq $expectedContainer -and $_.Depth -eq '1' })
+                $nestedCircles = @($nestedRows | Where-Object {
+                    $_.EntityType -eq 'Circle' -and $_.Container -eq $expectedContainer -and $_.Depth -eq '1' })
+            }
+
+            Check ($nestedLines.Count -eq 1) `
+                ("the block's line is harvested once (found {0})" -f $nestedLines.Count)
+            Check ($nestedCircles.Count -eq 1) `
+                ("the block's circle is harvested once (found {0})" -f $nestedCircles.Count)
+
+            if ($nestedLines.Count -eq 1) {
+                $nestedLine = $nestedLines[0]
+                Check ($nestedLine.X -eq '100.000' -and $nestedLine.Y -eq '100.000') `
+                    ("the insertion transform moved the line to 100,100 ({0},{1})" -f $nestedLine.X, $nestedLine.Y)
+                Check ($nestedLine.Length -eq '20.000') `
+                    ("the block scale of 2 doubled the line length ({0})" -f $nestedLine.Length)
+                Check ($nestedLine.IsXref -eq '0') `
+                    ("a local block is not marked as an xref (found {0})" -f $nestedLine.IsXref)
+            }
+
+            if ($nestedCircles.Count -eq 1) {
+                $nestedCircle = $nestedCircles[0]
+                Check ($nestedCircle.X -eq '110.000' -and $nestedCircle.Y -eq '110.000') `
+                    ("the circle centre is transformed ({0},{1})" -f $nestedCircle.X, $nestedCircle.Y)
+                $circumference = 0.0
+                [void][double]::TryParse(
+                    $nestedCircle.Length,
+                    [System.Globalization.NumberStyles]::Float,
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [ref]$circumference)
+                Check ([Math]::Abs($circumference - 25.133) -lt 0.002) `
+                    ("the circle circumference is scaled ({0})" -f $nestedCircle.Length)
+            }
+
+            # ---------------------------------------------- 4c xref traversal
+            # The external drawing's line is not in this database until the xrefs are
+            # resolved, which only the nested run does. Once resolved it must arrive with
+            # the xref's insertion transform, the xref in its Container, and IsXref=1.
+            $xrefContainer = ''
+            if ($xrefBlock.Count -eq 1) {
+                $xrefContainer = 'xref-source@' + $xrefBlock[0].Handle
+            }
+
+            $xrefNestedLines = @()
+            if ($xrefContainer) {
+                $xrefNestedLines = @($nestedRows | Where-Object {
+                    $_.EntityType -eq 'Line' -and $_.Container -eq $xrefContainer -and $_.Depth -eq '1' })
+            }
+
+            Check ($xrefNestedLines.Count -eq 1) `
+                ("the xref's line is harvested once when resolved (found {0})" -f $xrefNestedLines.Count)
+            if ($xrefNestedLines.Count -eq 1) {
+                $xrefLine = $xrefNestedLines[0]
+                Check ($xrefLine.IsXref -eq '1') `
+                    ("xref children are marked IsXref=1 (found {0})" -f $xrefLine.IsXref)
+                Check ($xrefLine.X -eq '200.000' -and $xrefLine.Y -eq '200.000') `
+                    ("the xref insertion transform moved the line ({0},{1})" -f $xrefLine.X, $xrefLine.Y)
+                Check ($xrefLine.Length -eq '5.000') `
+                    ("the xref line keeps its own length ({0})" -f $xrefLine.Length)
+            }
+
+            if ($found.Count -eq 0 -or $nestedLines.Count -eq 0 -or $xrefNestedLines.Count -eq 0) {
                 Write-Host '          supervisor output:'
                 foreach ($line in ($out -split "`r?`n")) {
                     if ($line.Trim()) { Write-Host ('            ' + $line) }

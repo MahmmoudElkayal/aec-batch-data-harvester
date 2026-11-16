@@ -4,6 +4,11 @@
     /// One harvested entity, independent of AutoCAD. Everything downstream of extraction
     /// (formatting, sinks, reporting) works on this type only, which is what keeps those
     /// layers testable without a CAD host.
+    ///
+    /// <see cref="Container"/>, <see cref="Depth"/> and <see cref="IsXref"/> describe where
+    /// the row came from once nested block traversal is enabled. They default to the
+    /// top-level case, so an extractor never has to know about nesting: the scanner stamps
+    /// the provenance on every row it writes.
     /// </summary>
     public sealed record HarvestRow(
         string Drawing,
@@ -18,5 +23,8 @@
         double? Z,
         double? Length,
         string Unit,
-        int UnitCode);
+        int UnitCode,
+        string Container = "",
+        int Depth = 0,
+        bool IsXref = false);
 }

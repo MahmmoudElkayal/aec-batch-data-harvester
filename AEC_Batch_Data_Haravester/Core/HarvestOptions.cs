@@ -32,6 +32,13 @@ namespace AEC_Batch_Data_Haravester.Core
         /// <summary>Set by the supervisor to the chunk manifest the engine should process.</summary>
         public const string BatchManifestVariable = "AEC_HARVEST_BATCH";
 
+        /// <summary>
+        /// Opt-in nested block traversal. Off by default because it multiplies rows on a
+        /// drawing whose blocks contain geometry, and because an inner definition object
+        /// is reached once per placement. On for exactly "1", like every other switch.
+        /// </summary>
+        public const string NestedBlocksVariable = "AEC_HARVEST_NESTED";
+
         public const string OutputFileName = "Extracted_BOM.csv";
         public const string StatusFolderName = "_status";
         public const string RowsFolderName = "_rows";
@@ -55,12 +62,14 @@ namespace AEC_Batch_Data_Haravester.Core
         /// </summary>
         public const string BatchSummaryFileName = "_batch.json";
 
-        private HarvestOptions(string outputFolder, string key, bool excelSafe, bool utf8Bom)
+        private HarvestOptions(
+            string outputFolder, string key, bool excelSafe, bool utf8Bom, bool nestedBlocks)
         {
             OutputFolder = outputFolder;
             Key = key;
             ExcelSafe = excelSafe;
             Utf8Bom = utf8Bom;
+            IncludeNestedBlocks = nestedBlocks;
         }
 
         /// <summary>Where rows and status files go. Never empty.</summary>
@@ -81,6 +90,9 @@ namespace AEC_Batch_Data_Haravester.Core
 
         /// <summary>Write a UTF-8 BOM at the start of each CSV file.</summary>
         public bool Utf8Bom { get; }
+
+        /// <summary>Descend into block definitions and report the geometry they contain.</summary>
+        public bool IncludeNestedBlocks { get; }
 
         public string StatusFolder => Path.Combine(OutputFolder, StatusFolderName);
 
@@ -116,7 +128,12 @@ namespace AEC_Batch_Data_Haravester.Core
                     "the batch manifest supplied a blank key; the plugin will not invent one.");
             }
 
-            return new HarvestOptions(ResolveOutputFolder(), key, IsEnabled(ExcelSafeVariable), IsEnabled(Utf8BomVariable));
+            return new HarvestOptions(
+                ResolveOutputFolder(),
+                key,
+                IsEnabled(ExcelSafeVariable),
+                IsEnabled(Utf8BomVariable),
+                IsEnabled(NestedBlocksVariable));
         }
 
         /// <summary>

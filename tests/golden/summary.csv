@@ -1,4 +1,4 @@
 "Drawing","Rows","Bytes","Sha256","File","AttributeRows","AttributeBytes","AttributeSha256","AttributeFile"
-"Assembly Sample.dwg",2306,176857,"971c18a0fb21a4014d5346077b582ee7f52b54a9fdf0b9614f542c4275a878f2","Assembly Sample.csv",100,3765,"894504a6f67feb92b43f79cf399ec1866a99e5fa780f66638f16c4b2f69e6d07","Assembly Sample.attributes.csv"
-"Floor Plan Sample.dwg",4422,364421,"b3f933045e5ea9d8a951ff67e577f3f4edd39060a8883d33b3efafaf5b7d7a7d","Floor Plan Sample.csv",119,4873,"e3b5f5d09123a5e3b86c79e049f908121df8d63122561d209ece07e93bbae523","Floor Plan Sample.attributes.csv"
-"House Designer.dwg",20,2396,"53175d30b10bb8ff8d35f42aa6eeaad0ff7d5e23d229a2e9a1433180aff86c74","House Designer.csv",0,43,"3c1321a846d32f11890244db0407fa7ea57207d07bf81aa4de9ab68c8d3b709a","House Designer.attributes.csv"
+"Assembly Sample.dwg",2306,188410,"0faa7a49a0cbe5244fc83824b9cf3cae2f3401476400eeabf767808abd2df1ba","Assembly Sample.csv",100,3875,"cc8f8b17e9518e5647da176aa08dc9b0b238f2e37850f5430f3f78e73d37a2ad","Assembly Sample.attributes.csv"
+"Floor Plan Sample.dwg",4422,386554,"6632442b3d78599c92c6b0b50d507b90a937f401025d01458d0bc2be61b70939","Floor Plan Sample.csv",119,5002,"420d06d514aa98791a335715be30242380b4c86941b535f25a4acf4d03fd24dc","Floor Plan Sample.attributes.csv"
+"House Designer.dwg",20,2519,"4e122a2422b5985672238d861fbafd219c3e4373484ca505abc78c5fbbf9530c","House Designer.csv",0,53,"bd11def2d68c504d734e1fcaddb6d7dd0fdfb2027ef9560cb6d718d2f5ac715b","House Designer.attributes.csv"

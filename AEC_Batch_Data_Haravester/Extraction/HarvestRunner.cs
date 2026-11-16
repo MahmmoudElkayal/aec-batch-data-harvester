@@ -49,7 +49,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
 
                 using var sink = new CsvRowSink(options, formatter, attributeFormatter);
 
-                HarvestResult result = new DrawingScanner(Registry, Resolver)
+                HarvestResult result = new DrawingScanner(Registry, Resolver, options.IncludeNestedBlocks)
                     .Scan(db, drawingName, sink);
 
                 sink.Complete();

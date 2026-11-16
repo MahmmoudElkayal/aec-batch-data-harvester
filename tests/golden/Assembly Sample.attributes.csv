@@ -1,101 +1,101 @@
-Drawing,EntityHandle,Tag,Value,IsConstant
-Assembly Sample.dwg,12F5,1,20,0
-Assembly Sample.dwg,12F5,3,CE003902,0
-Assembly Sample.dwg,12F5,4,SOCKET,0
-Assembly Sample.dwg,12F5,2,1,0
-Assembly Sample.dwg,12FB,1,25,0
-Assembly Sample.dwg,12FB,3,CH00531,0
-Assembly Sample.dwg,12FB,4,RIVET #511 X 3/16,0
-Assembly Sample.dwg,12FB,2,12,0
-Assembly Sample.dwg,1301,1,24,0
-Assembly Sample.dwg,1301,3,CG17903,0
-Assembly Sample.dwg,1301,4,VERT CARR BRKT. ASM,0
-Assembly Sample.dwg,1301,2,2,0
-Assembly Sample.dwg,1307,1,23,0
-Assembly Sample.dwg,1307,3,CG1291801,0
-Assembly Sample.dwg,1307,4,FLEX ASM. 3/8 X 18 W/1 STR. CON,0
-Assembly Sample.dwg,1307,2,1,0
-Assembly Sample.dwg,130D,1,22,0
-Assembly Sample.dwg,130D,3,CG11914,0
-Assembly Sample.dwg,130D,4,GROUND SCREW ASM.,0
-Assembly Sample.dwg,130D,2,1,0
-Assembly Sample.dwg,1313,1,21,0
-Assembly Sample.dwg,1313,3,CG01910,0
-Assembly Sample.dwg,1313,4,THERMAL PROT. ASM.,0
-Assembly Sample.dwg,1313,2,1,0
-Assembly Sample.dwg,1319,1,10,0
-Assembly Sample.dwg,1319,3,CC02929,0
-Assembly Sample.dwg,1319,4,J-BOX HOUSING,0
-Assembly Sample.dwg,1319,2,1,0
-Assembly Sample.dwg,131F,1,15,0
-Assembly Sample.dwg,131F,3,CC07303,0
-Assembly Sample.dwg,131F,4,MTG. FRAME,0
-Assembly Sample.dwg,131F,2,1,0
-Assembly Sample.dwg,1325,1,16,0
-Assembly Sample.dwg,1325,3,CC08045,0
-Assembly Sample.dwg,1325,4,HSG. WRAP,0
-Assembly Sample.dwg,1325,2,1,0
-Assembly Sample.dwg,132B,1,19,0
-Assembly Sample.dwg,132B,3,CC14942,0
-Assembly Sample.dwg,132B,4,RETAINING CLIP,0
-Assembly Sample.dwg,132B,2,3,0
-Assembly Sample.dwg,1331,1,18,0
-Assembly Sample.dwg,1331,3,CC10905,0
-Assembly Sample.dwg,1331,4,SKT. MTG. BRKT.,0
-Assembly Sample.dwg,1331,2,1,0
-Assembly Sample.dwg,1337,1,17,0
-Assembly Sample.dwg,1337,3,CC09912C02,0
-Assembly Sample.dwg,1337,4,RETAINING CLIP ZINC PLATED,0
-Assembly Sample.dwg,1337,2,1,0
-Assembly Sample.dwg,133D,1,13,0
-Assembly Sample.dwg,133D,3,CC05942,0
-Assembly Sample.dwg,133D,4,L-BRKT. 1.75 X .95 X .62,0
-Assembly Sample.dwg,133D,2,2,0
-Assembly Sample.dwg,1343,1,12,0
-Assembly Sample.dwg,1343,3,CC05931,0
-Assembly Sample.dwg,1343,4,ARM 5.56 X .82 X .19,0
-Assembly Sample.dwg,1343,2,2,0
-Assembly Sample.dwg,1349,1,14,0
-Assembly Sample.dwg,1349,3,CC06901,0
-Assembly Sample.dwg,1349,4,HOUSING,0
-Assembly Sample.dwg,1349,2,1,0
-Assembly Sample.dwg,134F,1,11,0
-Assembly Sample.dwg,134F,3,CC05901,0
-Assembly Sample.dwg,134F,4,INNER PLATE,0
-Assembly Sample.dwg,134F,2,1,0
-Assembly Sample.dwg,1355,1,5,0
-Assembly Sample.dwg,1355,3,CB08901,0
-Assembly Sample.dwg,1355,4,ROTATION STOP,0
-Assembly Sample.dwg,1355,2,1,0
-Assembly Sample.dwg,135B,1,7,0
-Assembly Sample.dwg,135B,3,CC00941,0
-Assembly Sample.dwg,135B,4,RETAINING CLIP,0
-Assembly Sample.dwg,135B,2,2,0
-Assembly Sample.dwg,1361,1,6,0
-Assembly Sample.dwg,1361,3,CB20901,0
-Assembly Sample.dwg,1361,4,YOKE SPACER,0
-Assembly Sample.dwg,1361,2,1,0
-Assembly Sample.dwg,1367,1,8,0
-Assembly Sample.dwg,1367,3,CC01933,0
-Assembly Sample.dwg,1367,4,YOKE,0
-Assembly Sample.dwg,1367,2,1,0
-Assembly Sample.dwg,136D,1,9,0
-Assembly Sample.dwg,136D,3,CC02927,0
-Assembly Sample.dwg,136D,4,J-BOX COVER,0
-Assembly Sample.dwg,136D,2,2,0
-Assembly Sample.dwg,1373,1,1,0
-Assembly Sample.dwg,1373,3,CA48901,0
-Assembly Sample.dwg,1373,4,DESIGNER HSG.,0
-Assembly Sample.dwg,1373,2,1,0
-Assembly Sample.dwg,1379,1,2,0
-Assembly Sample.dwg,1379,3,CA69901,0
-Assembly Sample.dwg,1379,4,SPLAY,0
-Assembly Sample.dwg,1379,2,1,0
-Assembly Sample.dwg,137F,1,3,0
-Assembly Sample.dwg,137F,3,CA70901,0
-Assembly Sample.dwg,137F,4,HSG. TOP,0
-Assembly Sample.dwg,137F,2,1,0
-Assembly Sample.dwg,1385,Item,4,0
-Assembly Sample.dwg,1385,Part Number,CB07901,0
-Assembly Sample.dwg,1385,Description,RETAINER,0
-Assembly Sample.dwg,1385,Quantity,1,0
+Drawing,EntityHandle,Container,Tag,Value,IsConstant
+Assembly Sample.dwg,12F5,,1,20,0
+Assembly Sample.dwg,12F5,,3,CE003902,0
+Assembly Sample.dwg,12F5,,4,SOCKET,0
+Assembly Sample.dwg,12F5,,2,1,0
+Assembly Sample.dwg,12FB,,1,25,0
+Assembly Sample.dwg,12FB,,3,CH00531,0
+Assembly Sample.dwg,12FB,,4,RIVET #511 X 3/16,0
+Assembly Sample.dwg,12FB,,2,12,0
+Assembly Sample.dwg,1301,,1,24,0
+Assembly Sample.dwg,1301,,3,CG17903,0
+Assembly Sample.dwg,1301,,4,VERT CARR BRKT. ASM,0
+Assembly Sample.dwg,1301,,2,2,0
+Assembly Sample.dwg,1307,,1,23,0
+Assembly Sample.dwg,1307,,3,CG1291801,0
+Assembly Sample.dwg,1307,,4,FLEX ASM. 3/8 X 18 W/1 STR. CON,0
+Assembly Sample.dwg,1307,,2,1,0
+Assembly Sample.dwg,130D,,1,22,0
+Assembly Sample.dwg,130D,,3,CG11914,0
+Assembly Sample.dwg,130D,,4,GROUND SCREW ASM.,0
+Assembly Sample.dwg,130D,,2,1,0
+Assembly Sample.dwg,1313,,1,21,0
+Assembly Sample.dwg,1313,,3,CG01910,0
+Assembly Sample.dwg,1313,,4,THERMAL PROT. ASM.,0
+Assembly Sample.dwg,1313,,2,1,0
+Assembly Sample.dwg,1319,,1,10,0
+Assembly Sample.dwg,1319,,3,CC02929,0
+Assembly Sample.dwg,1319,,4,J-BOX HOUSING,0
+Assembly Sample.dwg,1319,,2,1,0
+Assembly Sample.dwg,131F,,1,15,0
+Assembly Sample.dwg,131F,,3,CC07303,0
+Assembly Sample.dwg,131F,,4,MTG. FRAME,0
+Assembly Sample.dwg,131F,,2,1,0
+Assembly Sample.dwg,1325,,1,16,0
+Assembly Sample.dwg,1325,,3,CC08045,0
+Assembly Sample.dwg,1325,,4,HSG. WRAP,0
+Assembly Sample.dwg,1325,,2,1,0
+Assembly Sample.dwg,132B,,1,19,0
+Assembly Sample.dwg,132B,,3,CC14942,0
+Assembly Sample.dwg,132B,,4,RETAINING CLIP,0
+Assembly Sample.dwg,132B,,2,3,0
+Assembly Sample.dwg,1331,,1,18,0
+Assembly Sample.dwg,1331,,3,CC10905,0
+Assembly Sample.dwg,1331,,4,SKT. MTG. BRKT.,0
+Assembly Sample.dwg,1331,,2,1,0
+Assembly Sample.dwg,1337,,1,17,0
+Assembly Sample.dwg,1337,,3,CC09912C02,0
+Assembly Sample.dwg,1337,,4,RETAINING CLIP ZINC PLATED,0
+Assembly Sample.dwg,1337,,2,1,0
+Assembly Sample.dwg,133D,,1,13,0
+Assembly Sample.dwg,133D,,3,CC05942,0
+Assembly Sample.dwg,133D,,4,L-BRKT. 1.75 X .95 X .62,0
+Assembly Sample.dwg,133D,,2,2,0
+Assembly Sample.dwg,1343,,1,12,0
+Assembly Sample.dwg,1343,,3,CC05931,0
+Assembly Sample.dwg,1343,,4,ARM 5.56 X .82 X .19,0
+Assembly Sample.dwg,1343,,2,2,0
+Assembly Sample.dwg,1349,,1,14,0
+Assembly Sample.dwg,1349,,3,CC06901,0
+Assembly Sample.dwg,1349,,4,HOUSING,0
+Assembly Sample.dwg,1349,,2,1,0
+Assembly Sample.dwg,134F,,1,11,0
+Assembly Sample.dwg,134F,,3,CC05901,0
+Assembly Sample.dwg,134F,,4,INNER PLATE,0
+Assembly Sample.dwg,134F,,2,1,0
+Assembly Sample.dwg,1355,,1,5,0
+Assembly Sample.dwg,1355,,3,CB08901,0
+Assembly Sample.dwg,1355,,4,ROTATION STOP,0
+Assembly Sample.dwg,1355,,2,1,0
+Assembly Sample.dwg,135B,,1,7,0
+Assembly Sample.dwg,135B,,3,CC00941,0
+Assembly Sample.dwg,135B,,4,RETAINING CLIP,0
+Assembly Sample.dwg,135B,,2,2,0
+Assembly Sample.dwg,1361,,1,6,0
+Assembly Sample.dwg,1361,,3,CB20901,0
+Assembly Sample.dwg,1361,,4,YOKE SPACER,0
+Assembly Sample.dwg,1361,,2,1,0
+Assembly Sample.dwg,1367,,1,8,0
+Assembly Sample.dwg,1367,,3,CC01933,0
+Assembly Sample.dwg,1367,,4,YOKE,0
+Assembly Sample.dwg,1367,,2,1,0
+Assembly Sample.dwg,136D,,1,9,0
+Assembly Sample.dwg,136D,,3,CC02927,0
+Assembly Sample.dwg,136D,,4,J-BOX COVER,0
+Assembly Sample.dwg,136D,,2,2,0
+Assembly Sample.dwg,1373,,1,1,0
+Assembly Sample.dwg,1373,,3,CA48901,0
+Assembly Sample.dwg,1373,,4,DESIGNER HSG.,0
+Assembly Sample.dwg,1373,,2,1,0
+Assembly Sample.dwg,1379,,1,2,0
+Assembly Sample.dwg,1379,,3,CA69901,0
+Assembly Sample.dwg,1379,,4,SPLAY,0
+Assembly Sample.dwg,1379,,2,1,0
+Assembly Sample.dwg,137F,,1,3,0
+Assembly Sample.dwg,137F,,3,CA70901,0
+Assembly Sample.dwg,137F,,4,HSG. TOP,0
+Assembly Sample.dwg,137F,,2,1,0
+Assembly Sample.dwg,1385,,Item,4,0
+Assembly Sample.dwg,1385,,Part Number,CB07901,0
+Assembly Sample.dwg,1385,,Description,RETAINER,0
+Assembly Sample.dwg,1385,,Quantity,1,0

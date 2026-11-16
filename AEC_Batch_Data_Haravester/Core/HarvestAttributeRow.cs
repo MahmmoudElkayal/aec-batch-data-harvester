@@ -8,11 +8,15 @@ namespace AEC_Batch_Data_Haravester.Core
     /// <see cref="EntityHandle"/> is the handle of the owning block reference, so this file
     /// joins to the entity file on Handle. A block with three attributes contributes three
     /// rows with the same handle and different tags.
+    ///
+    /// <see cref="Container"/> is the same ancestor chain the owning entity row carries, so
+    /// an attribute read from inside a nested block still says where it came from.
     /// </summary>
     public sealed record HarvestAttributeRow(
         string Drawing,
         string EntityHandle,
         string Tag,
         string Value,
-        bool IsConstant);
+        bool IsConstant,
+        string Container = "");
 }
