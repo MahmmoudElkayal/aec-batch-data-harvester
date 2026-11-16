@@ -14,6 +14,8 @@
         Circle,
         DBText,
         MText,
-        Solid
+        Solid,
+        Curve,
+        Hatch
     }
 }

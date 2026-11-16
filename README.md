@@ -12,8 +12,8 @@ is what makes unattended batch processing possible.
 > **Status: working end-to-end prototype.** Verified against 3 sample drawings:
 > **6,748 entity rows and 219 attribute rows, 0 duplicates, 39–77 ms of engine time per
 > drawing.** Every entity type in the corpus census is extracted. Nested blocks and xref
-> contents are available behind `AEC_HARVEST_NESTED=1`; vertical AEC objects are still out of
-> scope.
+> contents are available behind `AEC_HARVEST_NESTED=1`; curves without a named extractor and
+> hatches report area. Vertical AEC objects are still out of scope.
 
 ---
 
@@ -22,7 +22,7 @@ is what makes unattended batch processing possible.
 | | |
 |---|---|
 | **Reads** | DWG files without opening them in the AutoCAD UI |
-| **Finds** | block references (name, definition, layer, handle, insertion point, attributes), LWPOLYLINEs, lines, arcs, circles, DBText/MText, solids, in model and paper space |
+| **Finds** | block references (name, definition, layer, handle, insertion point, attributes), LWPOLYLINEs, closed-curve and hatch areas, lines, arcs, circles, DBText/MText, solids, ellipses/splines/2D-3D polylines through one curve fallback, in model and paper space |
 | **Writes** | `Extracted_BOM.csv` (entities) and `Extracted_Attributes.csv` (long-format attributes) — RFC 4180, UTF-8 without BOM by default |
 | **Never writes** | to the drawings themselves (`/readonly` + read-only transactions) |
 | **Reports** | per-drawing success/failure, row and attribute counts, plus a per-drawing log |
@@ -101,7 +101,7 @@ processed / succeeded / failed summary.
 |---|---|
 | `Drawing` | source DWG file name |
 | `Space` | `Model` or `Paper` |
-| `EntityType` | `Block`, `Polyline`, `Line`, `Arc`, `Circle`, `DBText`, `MText` or `Solid` |
+| `EntityType` | `Block`, `Polyline`, `Line`, `Arc`, `Circle`, `DBText`, `MText`, `Solid`, `Hatch`, or a fallback curve named after its DXF type (`Ellipse`, `Spline`, `Ray`, `Xline`, `Polyline`, …) |
 | `Name` | block name; for `DBText`/`MText`, the text content |
 | `BlockDefinition` | resolved definition name (blocks only; dynamic blocks resolve through `DynamicBlockTableRecord`) |
 | `Layer` | object layer |
@@ -110,14 +110,29 @@ processed / succeeded / failed summary.
 | `Depth` | number of block references above the row; `0` at the top level |
 | `IsXref` | `1` when the row is, or is inside, an external reference |
 | `X` `Y` `Z` | insertion point / centre / start point, per type, in drawing coordinates |
-| `Length` | curve length (polyline, line, arc, circle); blank where it has no meaning |
+| `Length` | curve length (polyline, line, arc, circle, fallback curves); blank where it has no meaning |
+| `Area` | enclosed area for a closed polyline, closed curve or hatch; blank for open geometry |
 | `Unit` `UnitCode` | drawing `INSUNITS`, on every row |
 
 ```csv
-Drawing,Space,EntityType,Name,BlockDefinition,Layer,Handle,Container,Depth,IsXref,X,Y,Z,Length,Unit,UnitCode
-Assembly Sample.dwg,Model,Line,,,0,A47,,0,0,90.927,60.400,0.000,89.927,Undefined,0
-Floor Plan Sample.dwg,Model,Block,DR-36,DR-36,E-F-DOOR,6C,,0,0,2827.000,1911.000,0.000,,Inches,1
+Drawing,Space,EntityType,Name,BlockDefinition,Layer,Handle,Container,Depth,IsXref,X,Y,Z,Length,Area,Unit,UnitCode
+Assembly Sample.dwg,Model,Line,,,0,A47,,0,0,90.927,60.400,0.000,89.927,,Undefined,0
+Floor Plan Sample.dwg,Model,Polyline,,,E-B-MULL,3A,,0,0,,,,14.500,11.250,Inches,1
+Floor Plan Sample.dwg,Model,Block,DR-36,DR-36,E-F-DOOR,6C,,0,0,2827.000,1911.000,0.000,,,Inches,1
 ```
+
+`Area` is the drawing's square unit (the square of `Unit`). It is filled only where the CAD
+engine defines one: a closed LWPOLYLINE, a closed curve such as a full ellipse or closed
+spline, and a HATCH. An open polyline is a route, not an enclosure, so its cell stays blank
+rather than becoming `0.000`.
+
+### Curves and hatches the named extractors do not cover
+
+One fallback extractor is registered on `Curve`, so 2D/3D polylines, ellipses, splines, rays,
+xlines and helices are harvested without an extractor each. The registry walks from the
+entity's class upward and stops at the first match, which is why `Line`, `Arc`, `Circle` and
+LWPOLYLINE keep their specific rows. A ray or xline has no finite length and no area; those
+cells stay blank while the row still records the object and its layer.
 
 `Container`, `Depth` and `IsXref` describe where a row came from. They stay blank/`0` unless
 nested traversal is on, so a default run's rows are unchanged by the column addition.
@@ -131,8 +146,8 @@ transform as well. The ancestor chain is recorded, and the handle in it makes tw
 the same inner definition distinguishable:
 
 ```csv
-Drawing,Space,EntityType,Name,BlockDefinition,Layer,Handle,Container,Depth,IsXref,X,Y,Z,Length,Unit,UnitCode
-Plan.dwg,Model,Line,,,0,B21,Door@2A > Hinge@3B,2,0,101.500,99.000,0.000,4.000,Millimeters,4
+Drawing,Space,EntityType,Name,BlockDefinition,Layer,Handle,Container,Depth,IsXref,X,Y,Z,Length,Area,Unit,UnitCode
+Plan.dwg,Model,Line,,,0,B21,Door@2A > Hinge@3B,2,0,101.500,99.000,0.000,4.000,,Millimeters,4
 ```
 
 The switch is off by default because recursion multiplies rows on any drawing whose blocks

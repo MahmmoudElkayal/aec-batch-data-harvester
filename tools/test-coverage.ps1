@@ -2,15 +2,16 @@
 #
 # Phase 5 is about coverage: the harvester must see every entity in the plan's census,
 # carry block attributes in a separate long-format file, and prove paper space is scanned.
-# Those are four different claims, so they get four independent checks:
+# Those are different claims, so they get independent checks:
 #
 #   1. row counts match the census exactly, per drawing and per entity type
 #   2. 219 attribute rows for 144 block references, including the probe values
 #   3. every attribute handle resolves in the entity file (the join actually works)
-#   4. paper space is traversed - proved with a fixture, because the sample corpus only
-#      has viewports there and a zero-row assertion would pass even if it were ignored
+#   4. paper space, nested blocks, xrefs and area - proved with a fixture, because the
+#      sample corpus has none of them and a zero-row assertion would pass even if the
+#      code ignored them
 #   5. the status file tells the truth: it names the output schema, counts an unsupported
-#      RAY by class, and carries a constant attribute read from the block definition
+#      3DFACE by class, and carries a constant attribute read from the block definition
 #
 # A source-level check proves the plan's "one class + one registration line"
 # property by matching every EntityKind to exactly one extractor and every extractor to
@@ -166,7 +167,7 @@ try {
 
     # ------------------------------------------------------------------ 4
     Write-Host ''
-    Write-Host '[4] paper space is traversed'
+    Write-Host '[4] paper space, nesting, xrefs and area are traversed'
 
     $source = Get-ChildItem $inputDir -Filter *.dwg -File |
         Where-Object { $_.Name -notlike 'ZZ*' } | Select-Object -First 1
@@ -216,18 +217,22 @@ try {
             # entmake with a 410 group places the entity in the named layout, independent
             # of what is visible in the editor. The 410 value is the current tab name.
             $editScript = Join-Path $scratch 'make.scr'
-            # Seven probe objects in one drawing:
-            #   TEXT  - paper space is traversed (section 4)
-            #   RAY   - an unsupported class is counted, not silently dropped (section 6)
+            # Ten probe objects in one drawing:
+            #   TEXT    - paper space is traversed (section 4)
+            #   3DFACE  - an unsupported class is counted, not silently dropped (section 6).
+            #             It is deliberately not a Curve: the Curve fallback now supports
+            #             rays, xlines, ellipses, splines and 2D/3D polylines.
             #   INSERT of CONSTPROBE - a constant attribute is read from the definition
-            #          (section 6). Constant attributes are never copied onto the reference,
-            #          so only a definition read can find this value.
+            #             (section 6). Constant attributes are never copied onto the
+            #             reference, so only a definition read can find this value.
             #   INSERT of NESTEDPROBE - block geometry is traversed only when nested
-            #          harvesting is on, and its line/circle arrive with the insertion
-            #          transform applied and a Container path (section 4b).
+            #             harvesting is on, and its line/circle arrive with the insertion
+            #             transform applied and a Container path (section 4b).
             #   XREF of xref-source - the block row says IsXref=1 immediately; the external
-            #          line becomes visible only when nested harvesting resolves the xref
-            #          (section 4c).
+            #             line becomes visible only when nested harvesting resolves the xref
+            #             (section 4c).
+            #   ELLIPSE, closed LWPOLYLINE, HATCH on the AREAPROBE layer - area takeoff,
+            #             which the Curve fallback and the hatch extractor supply (section 4d).
             $lines = @(
                 '(setvar "CTAB" "Model")',
                 '(entmake (list (cons 0 "BLOCK") (cons 2 "NESTEDPROBE") (cons 70 0) (cons 10 (list 0.0 0.0 0.0))))',
@@ -236,9 +241,15 @@ try {
                 '(entmake (list (cons 0 "ENDBLK")))',
                 '(entmake (list (cons 0 "INSERT") (cons 8 "0") (cons 2 "NESTEDPROBE") (cons 10 (list 100.0 100.0 0.0)) (cons 41 2.0) (cons 42 2.0) (cons 43 2.0)))',
                 ('(command "_.-XREF" "_A" "' + ($xrefSource -replace '\\', '/') + '" (list 200.0 200.0 0.0) 1.0 1.0 0.0)'),
+                '(command "_.-LAYER" "_M" "AREAPROBE" "")',
+                '(setvar "CLAYER" "AREAPROBE")',
+                '(entmake (list (cons 0 "ELLIPSE") (cons 100 "AcDbEntity") (cons 100 "AcDbEllipse") (cons 8 "AREAPROBE") (cons 10 (list 300.0 100.0 0.0)) (cons 11 (list 10.0 0.0 0.0)) (cons 40 0.5) (cons 41 0.0) (cons 42 (* 2.0 pi))))',
+                '(entmake (list (cons 0 "LWPOLYLINE") (cons 100 "AcDbEntity") (cons 100 "AcDbPolyline") (cons 8 "AREAPROBE") (cons 90 4) (cons 70 1) (cons 10 (list 300.0 300.0)) (cons 10 (list 310.0 300.0)) (cons 10 (list 310.0 310.0)) (cons 10 (list 300.0 310.0))))',
+                '(setq areaprobe (entlast))',
+                '(command "_.-HATCH" "_S" areaprobe "" "")',
                 '(setvar "CTAB" "Layout1")',
                 '(entmake (list (cons 0 "TEXT") (cons 8 "0") (cons 10 (list 5.0 5.0 0.0)) (cons 40 0.25) (cons 1 "PAPER-SPACE-PROBE") (cons 410 (getvar "CTAB"))))',
-                '(entmake (list (cons 0 "RAY") (cons 100 "AcDbEntity") (cons 100 "AcDbRay") (cons 8 "0") (cons 10 (list 0.0 0.0 0.0)) (cons 11 (list 1.0 0.0 0.0)) (cons 410 (getvar "CTAB"))))',
+                '(entmake (list (cons 0 "3DFACE") (cons 100 "AcDbEntity") (cons 100 "AcDbFace") (cons 8 "0") (cons 10 (list 0.0 0.0 0.0)) (cons 11 (list 1.0 0.0 0.0)) (cons 12 (list 1.0 1.0 0.0)) (cons 13 (list 0.0 1.0 0.0)) (cons 410 (getvar "CTAB"))))',
                 '(entmake (list (cons 0 "BLOCK") (cons 2 "CONSTPROBE") (cons 70 0) (cons 10 (list 0.0 0.0 0.0))))',
                 '(entmake (list (cons 0 "ATTDEF") (cons 8 "0") (cons 10 (list 0.0 0.0 0.0)) (cons 40 0.25) (cons 1 "CONST-VALUE") (cons 2 "CTAG") (cons 3 "constant probe") (cons 70 2)))',
                 '(entmake (list (cons 0 "ENDBLK")))',
@@ -300,7 +311,7 @@ try {
             # ---------------------------------------------- 6 and 7 status truth
             # The .ok file is the only place a reader can learn what was NOT harvested, so
             # the fixture asks the two questions a clean CSV cannot answer: did the status
-            # name the schema, and did it count the RAY the registry cannot extract?
+            # name the schema, and did it count the 3DFACE the registry cannot extract?
             $verdictPath = Join-Path $probeOutput '_status\Paper Probe-11223344.ok'
             $verdict = $null
             if (Test-Path $verdictPath) {
@@ -312,9 +323,9 @@ try {
             Check ($null -ne $verdictSchema -and [int]$verdictSchema -eq $SchemaVersion) `
                 ("the verdict names the schema the engine wrote ({0}, expected {1})" -f $verdictSchema, $SchemaVersion)
 
-            $rayCount = 0
-            if ($verdict -and $verdict.unsupported) { $rayCount = [int]$verdict.unsupported.RAY }
-            Check ($rayCount -eq 1) ("an unsupported RAY is counted by class (found {0})" -f $rayCount)
+            $faceCount = 0
+            if ($verdict -and $verdict.unsupported) { $faceCount = [int]$verdict.unsupported.'3DFACE' }
+            Check ($faceCount -eq 1) ("an unsupported 3DFACE is counted by class (found {0})" -f $faceCount)
 
             $probeAttrs = Join-Path $probeOutput '_rows\Paper Probe-11223344.attributes.csv'
             $constant = @()
@@ -453,7 +464,48 @@ try {
                     ("the xref line keeps its own length ({0})" -f $xrefLine.Length)
             }
 
-            if ($found.Count -eq 0 -or $nestedLines.Count -eq 0 -or $xrefNestedLines.Count -eq 0) {
+            # ---------------------------------------------- 4d area takeoff
+            # The fallback curve extractor has to produce a real number, not just a row:
+            # a full ellipse with semi-axes 10 and 5 has area pi*10*5 = 157.0796.
+            $areaRows = @($fixtureRows | Where-Object { $_.Layer -eq 'AREAPROBE' })
+            $areaEllipse = @($areaRows | Where-Object { $_.EntityType -eq 'Ellipse' })
+            $areaSquare = @($areaRows | Where-Object { $_.EntityType -eq 'Polyline' })
+            $areaHatch = @($areaRows | Where-Object { $_.EntityType -eq 'Hatch' })
+
+            Check ($areaEllipse.Count -eq 1) `
+                ("the fallback curve extractor reports the ellipse (found {0})" -f $areaEllipse.Count)
+            Check ($areaSquare.Count -eq 1) `
+                ("the closed polyline is one row (found {0})" -f $areaSquare.Count)
+            Check ($areaHatch.Count -eq 1) `
+                ("the hatch is one row (found {0})" -f $areaHatch.Count)
+
+            if ($areaEllipse.Count -eq 1) {
+                $ellipseArea = 0.0
+                [void][double]::TryParse(
+                    $areaEllipse[0].Area,
+                    [System.Globalization.NumberStyles]::Float,
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [ref]$ellipseArea)
+                Check ([Math]::Abs($ellipseArea - 157.080) -lt 0.002) `
+                    ("the ellipse area is pi*10*5 ({0})" -f $areaEllipse[0].Area)
+            }
+
+            if ($areaSquare.Count -eq 1) {
+                Check ($areaSquare[0].Area -eq '100.000') `
+                    ("a closed 10x10 polyline has area 100 ({0})" -f $areaSquare[0].Area)
+                Check ($areaSquare[0].Length -eq '40.000') `
+                    ("and its perimeter is still 40 ({0})" -f $areaSquare[0].Length)
+            }
+
+            if ($areaHatch.Count -eq 1) {
+                Check ($areaHatch[0].Area -eq '100.000') `
+                    ("the hatch over the 10x10 square has area 100 ({0})" -f $areaHatch[0].Area)
+                Check ($areaHatch[0].Length -eq '') `
+                    ("a hatch has no length ({0})" -f $areaHatch[0].Length)
+            }
+
+            if ($found.Count -eq 0 -or $nestedLines.Count -eq 0 -or $xrefNestedLines.Count -eq 0 `
+                -or $areaHatch.Count -eq 0) {
                 Write-Host '          supervisor output:'
                 foreach ($line in ($out -split "`r?`n")) {
                     if ($line.Trim()) { Write-Host ('            ' + $line) }

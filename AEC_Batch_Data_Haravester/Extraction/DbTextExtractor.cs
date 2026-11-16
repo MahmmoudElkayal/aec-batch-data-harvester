@@ -31,6 +31,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 Y: position.Y,
                 Z: position.Z,
                 Length: null,
+                Area: null,
                 Unit: context.Unit,
                 UnitCode: context.UnitCode));
         }

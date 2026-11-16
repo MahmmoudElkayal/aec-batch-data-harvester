@@ -565,7 +565,7 @@ namespace Harvest.Checks
                     Drawing: "Drawing, with comma.dwg", Space: "Model", EntityType: "Block",
                     Name: "Bath Tub - 26 x 60 in.", BlockDefinition: "Bath Tub - 26 x 60 in.",
                     Layer: "0", Handle: "47", X: 20.593, Y: 287.084, Z: 0.0, Length: null,
-                    Unit: "Inches", UnitCode: 1);
+                    Area: null, Unit: "Inches", UnitCode: 1);
 
                 string[] fields = SplitCsv(formatter.Row(row));
                 int expected = CsvFormatter.ColumnNames().Length;
@@ -589,14 +589,26 @@ namespace Harvest.Checks
                     ?? Expect(fields[11] == "287.084", "Y field")
                     ?? Expect(fields[12] == "0.000", "Z field")
                     ?? Expect(fields[13] == string.Empty, "polyline-only Length must be blank")
-                    ?? Expect(fields[14] == "Inches", "unit field")
-                    ?? Expect(fields[15] == "1", "unit code field");
+                    ?? Expect(fields[14] == string.Empty, "an area with no meaning must be blank")
+                    ?? Expect(fields[15] == "Inches", "unit field")
+                    ?? Expect(fields[16] == "1", "unit code field");
+            });
+
+            Check("area is formatted like every other measurement", () =>
+            {
+                var row = new HarvestRow(
+                    "D.dwg", "Model", "Hatch", "", "", "0", "1", 0, 0, 0, null, 12.5, "Inches", 1);
+
+                string[] fields = SplitCsv(formatter.Row(row));
+
+                return Expect(fields[13] == string.Empty, "a hatch has no length")
+                    ?? Expect(fields[14] == "12.500", "area");
             });
 
             Check("nested provenance is formatted, not inferred by the reader", () =>
             {
                 var row = new HarvestRow(
-                    "D.dwg", "Model", "Line", "", "", "0", "A1", 0, 0, 0, 1, "Inches", 1,
+                    "D.dwg", "Model", "Line", "", "", "0", "A1", 0, 0, 0, 1, null, "Inches", 1,
                     Container: "Door@2A > Hinge@3B", Depth: 2, IsXref: true);
 
                 string[] fields = SplitCsv(formatter.Row(row));
@@ -611,7 +623,7 @@ namespace Harvest.Checks
                 var row = new HarvestRow(
                     Drawing: "D.dwg", Space: "Model", EntityType: "Polyline",
                     Name: string.Empty, BlockDefinition: string.Empty, Layer: "102",
-                    Handle: "A50", X: null, Y: null, Z: null, Length: 306.124,
+                    Handle: "A50", X: null, Y: null, Z: null, Length: 306.124, Area: null,
                     Unit: "Undefined", UnitCode: 0);
 
                 string[] fields = SplitCsv(formatter.Row(row));
@@ -621,13 +633,14 @@ namespace Harvest.Checks
                     ?? Expect(fields[4] == string.Empty, "definition must be blank")
                     ?? Expect(fields[10] == string.Empty, "X must be blank")
                     ?? Expect(fields[13] == "306.124", "length")
-                    ?? Expect(fields[15] == "0", "unit code");
+                    ?? Expect(fields[14] == string.Empty, "an open polyline has no area")
+                    ?? Expect(fields[16] == "0", "unit code");
             });
 
             Check("header and row use the same column list", () =>
             {
                 var row = new HarvestRow(
-                    "D.dwg", "Model", "Line", "", "", "0", "1", 0, 0, 0, 1, "Inches", 1);
+                    "D.dwg", "Model", "Line", "", "", "0", "1", 0, 0, 0, 1, null, "Inches", 1);
 
                 string[] header = SplitCsv(formatter.Header);
                 string[] values = SplitCsv(formatter.Row(row));
@@ -640,7 +653,7 @@ namespace Harvest.Checks
             Check("the Excel guard is off by default", () =>
             {
                 var row = new HarvestRow(
-                    "D.dwg", "Model", "Line", "", "", "-Layer", "1", -5.5, 0, 0, 1, "Inches", 1);
+                    "D.dwg", "Model", "Line", "", "", "-Layer", "1", -5.5, 0, 0, 1, null, "Inches", 1);
 
                 string[] fields = SplitCsv(formatter.Row(row));
 
@@ -652,7 +665,7 @@ namespace Harvest.Checks
             {
                 var guarded = new CsvFormatter(excelSafe: true);
                 var row = new HarvestRow(
-                    "D.dwg", "Model", "Line", "", "", "-Layer", "1", -5.5, 0, 0, 1, "Inches", 1);
+                    "D.dwg", "Model", "Line", "", "", "-Layer", "1", -5.5, 0, 0, 1, null, "Inches", 1);
 
                 string[] fields = SplitCsv(guarded.Row(row));
 
@@ -661,7 +674,7 @@ namespace Harvest.Checks
                 return Expect(fields[5] == "'-Layer", "text layer not guarded")
                     ?? Expect(fields[10] == "-5.500", "a negative coordinate must stay numeric")
                     ?? Expect(fields[13] == "1.000", "a positive length must stay numeric")
-                    ?? Expect(fields[15] == "1", "the unit code must stay numeric");
+                    ?? Expect(fields[16] == "1", "the unit code must stay numeric");
             });
 
             Check("the attribute guard is opt-in too", () =>

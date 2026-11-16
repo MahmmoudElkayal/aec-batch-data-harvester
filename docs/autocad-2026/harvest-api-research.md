@@ -14,7 +14,7 @@ managed members that 2026 ships; where a member was renamed or added, the 2026 i
 | 2 | Constant attributes are never emitted | `AttributeDefinition.Constant` confirms no `Attribute` is created on insert | **Changed** |
 | 3 | MText is exported with formatting | `MText.Text` already strips formatting | Already correct |
 | 4 | Nested blocks and xrefs are invisible | `BlockTransform`, `IsFromExternalReference` and `Database.ResolveXrefs` cover the walk and the external contents | **Changed** |
-| 5 | Schema is thin for takeoff | `Curve.Area`, `Hatch.Area`, `Polyline2d/3d : Curve` | Planned |
+| 5 | Schema is thin for takeoff | `Curve.Area`, `Hatch.Area`, `Polyline2d/3d : Curve` | **Changed** |
 | 6 | `/append` merges two extraction rules | No built-in contract version; we must write one | **Changed** |
 | 7 | Chunks run one at a time | Multiple `accoreconsole` processes are a documented pattern | Planned |
 | 8 | No CI | The checks reference the AutoCAD plug-in, so cloud CI cannot build them | Planned |
@@ -115,22 +115,40 @@ reports only the two block rows; the nested run reports the line at `100,100` wi
 `200,200` with length `5.000`, `Container=xref-source@<handle>` and `IsXref=1`. The default
 corpus still produces 6,748/219 rows; the schema-3 re-capture changed only the new columns.
 
-## 5. Schema depth — one curve fallback, not eight extractors
+## 5. Schema depth — implemented as one curve fallback
 
 **Sources:** [`Curve.Area`](https://help.autodesk.com/cloudhelp/2022/ENU/OARX-ManagedRefGuide/files/OARX-ManagedRefGuide-Autodesk_AutoCAD_DatabaseServices_Curve_Area.html)
-("Accesses the area of the curve"), and
+("Accesses the area of the curve"),
 [`Polyline2d`](https://help.autodesk.com/cloudhelp/2022/ENU/OARX-ManagedRefGuide/files/OARX-ManagedRefGuide-Autodesk_AutoCAD_DatabaseServices_Polyline2d.html)
-— "Inherits Curve".
+— "Inherits Curve", and
+[`Hatch.Area`](https://help.autodesk.com/cloudhelp/2022/ENU/OARX-ManagedRefGuide/files/OARX-ManagedRefGuide-Autodesk_AutoCAD_DatabaseServices_Hatch_Area.html).
 
-The registry already matches by inheritance, so the cheapest correct move is a
-`CurveExtractor` registered on `Curve`: it catches `Polyline2d`, `Polyline3d`, `Ellipse`,
-`Spline`, `Ray`, `Xline` and any future curve with one class, while the specific extractors
-keep their named rows. `Curve.Area` is defined for closed planar curves and throws for open
-ones, so the extractor must catch and leave area blank.
+The registry matches by inheritance, so one `CurveExtractor` registered on `Curve` catches
+`Polyline2d`, `Polyline3d`, `Ellipse`, `Spline`, `Ray`, `Xline`, `Helix` and any future curve,
+while the specific extractors keep their named rows. `Curve.Area` is defined for closed planar
+curves and throws for open ones, so measurement goes through one failure policy that leaves the
+cell blank instead of losing the row. A ray or xline has no finite length either; it is now a
+harvested row with a blank length rather than an unsupported class.
 
-`Hatch.Area` exists for the same reason and is the next-highest-value entity: hatches are
-where area takeoff usually lives. Both need an `Area` column (schema 4), so they land together
-rather than half-shipped.
+**Two details the API forced.**
+
+1. The row's `EntityType` is the class's `RXClass.DxfName` in CamelCase, so a fallback row says
+   `Ellipse` or `Spline` instead of a generic `Curve`. A reader can act on that name.
+2. `Polyline.Area` is defined even for an open polyline (where it is a meaningless signed
+   value), so the polyline extractor reads area only when `Closed` is true. Otherwise the cell
+   stays blank: an open polyline is a route, not an enclosure.
+
+**Change:** `CurveExtractor` (on `Curve`), `HatchExtractor`, and area in `PolylineExtractor`;
+`HarvestContext.AreaScale` is the magnitude of the cross product of the transformed X and Y
+unit vectors, so a nested hatch's area is exact under a non-uniform block scale where squaring
+the scalar scale would over-report. `CsvFormatter` adds `Area` after `Length`; schema becomes 4
+and the supervisor gate moves with it.
+
+**Proof:** the acceptance fixture creates a full ellipse with semi-axes 10 and 5, a closed
+10×10 square LWPOLYLINE, and a HATCH over that square. The harvester reports ellipse area
+`157.080` (π·10·5 = 157.0796), square area `100.000` with perimeter `40.000`, hatch area
+`100.000` with a blank length. The default corpus keeps 6,748/219 rows; the schema-4 re-capture
+filled `Area` on 362 closed polylines and left every other byte identical.
 
 ## 6. Resume must be schema-aware — implemented
 

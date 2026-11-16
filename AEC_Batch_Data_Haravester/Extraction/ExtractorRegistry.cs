@@ -39,7 +39,9 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 new CircleExtractor(),
                 new DbTextExtractor(),
                 new MTextExtractor(),
-                new SolidExtractor()
+                new SolidExtractor(),
+                new HatchExtractor(),
+                new CurveExtractor()
             });
         }
 

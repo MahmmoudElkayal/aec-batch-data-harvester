@@ -46,6 +46,7 @@ namespace AEC_Batch_Data_Haravester.Output
             ("Y",               r => Number(r.Y),       false),
             ("Z",               r => Number(r.Z),       false),
             ("Length",          r => Number(r.Length),  false),
+            ("Area",            r => Number(r.Area),    false),
             ("Unit",            r => r.Unit,            true),
             ("UnitCode",        r => r.UnitCode.ToString(CultureInfo.InvariantCulture), false)
         };

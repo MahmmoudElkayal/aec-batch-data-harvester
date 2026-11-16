@@ -7,8 +7,8 @@ namespace AEC_Batch_Data_Haravester.Extraction
 {
     /// <summary>
     /// Measuring an entity is the one geometric read that can legitimately fail on a valid
-    /// object (a degenerate or self-intersecting curve cannot be measured). A missing
-    /// length must not cost the row, so every measured extractor goes through here.
+    /// object (a degenerate or open curve cannot be measured). A missing measurement must
+    /// not cost the row, so every measured extractor goes through here.
     ///
     /// This is per type rather than on the Curve base class because the managed API does
     /// not put Length on Curve: Polyline, Line and Arc each expose their own, and a circle
@@ -18,7 +18,8 @@ namespace AEC_Batch_Data_Haravester.Extraction
     /// Every measurement takes the context so a nested block's length is reported in
     /// drawing units rather than in the block's microspace. A line is measured from its
     /// transformed endpoints, which stays exact under a non-uniform block scale; the other
-    /// curves use the transform's scalar scale.
+    /// curves use the transform's scalar scale. Areas use <see cref="HarvestContext.ScaleArea"/>,
+    /// which is exact for a planar affine transform.
     /// </summary>
     internal static class CurveLength
     {
@@ -39,11 +40,42 @@ namespace AEC_Batch_Data_Haravester.Extraction
         public static double? TryMeasure(Circle circle, HarvestContext context)
             => Try(() => context.ScaleLength(circle.Circumference));
 
+        /// <summary>
+        /// The fallback curve measurement: distance from the start parameter to the end
+        /// parameter. A ray or xline is unbounded, so its "length" is infinite and is
+        /// reported blank rather than as a number no consumer can use.
+        /// </summary>
+        public static double? TryMeasure(Curve curve, HarvestContext context)
+            => Try(() =>
+            {
+                double length = curve.GetDistanceAtParameter(curve.EndParam);
+                return double.IsFinite(length) && length > 0.0
+                    ? context.ScaleLength(length)
+                    : double.NaN;
+            });
+
+        /// <summary>
+        /// A lightweight polyline's area is only defined when it is closed; an open one is
+        /// a route, not an enclosure, so its area stays blank instead of becoming 0.000.
+        /// </summary>
+        public static double? TryArea(Polyline polyline, HarvestContext context)
+            => Try(() => polyline.Closed
+                ? context.ScaleArea(polyline.Area)
+                : double.NaN);
+
+        /// <summary>Curve.Area throws for open curves, so a failure is a blank cell.</summary>
+        public static double? TryArea(Curve curve, HarvestContext context)
+            => Try(() => context.ScaleArea(curve.Area));
+
+        public static double? TryArea(Hatch hatch, HarvestContext context)
+            => Try(() => context.ScaleArea(hatch.Area));
+
         private static double? Try(Func<double> read)
         {
             try
             {
-                return read();
+                double value = read();
+                return double.IsFinite(value) ? value : (double?)null;
             }
             catch (AcException)
             {

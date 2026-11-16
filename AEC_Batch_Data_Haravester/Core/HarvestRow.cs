@@ -22,6 +22,7 @@
         double? Y,
         double? Z,
         double? Length,
+        double? Area,
         string Unit,
         int UnitCode,
         string Container = "",

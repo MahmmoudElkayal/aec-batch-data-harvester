@@ -98,9 +98,13 @@ output (matches `DATAEXTRACTION`), but less control over schema/flattening.
   the DLL under `TRUSTEDPATHS`.
 - Every verdict now carries `schema` and `tool`, and `/append` rejects a verdict written under
   another schema instead of merging two extraction rules into one CSV. The current contract is
-  schema 3 (nested provenance columns).
+  schema 4 (the `Area` column).
 - Entity classes with no extractor are counted by DXF name (`unsupported`,
   `unsupportedTotal`) rather than skipped silently; the sample corpus reports
   `VIEWPORT=8`. Sources and the remaining work are in `harvest-api-research.md`.
 - Nested block geometry and xref contents are harvested on request (`AEC_HARVEST_NESTED=1`),
   with the insertion transform applied and the ancestor chain recorded per row.
+- A single curve fallback extractor (registered on `Curve`) harvests the curve types that do
+  not have a named extractor, and `Area` is reported for closed curves and hatches. This is
+  why the acceptance fixture's unsupported probe is a 3DFACE: a RAY is a curve and is now
+  harvested.

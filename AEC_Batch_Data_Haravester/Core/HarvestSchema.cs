@@ -16,13 +16,14 @@ namespace AEC_Batch_Data_Haravester.Core
     /// semantics. The supervisor refuses verdicts from another version, so those drawings
     /// are harvested again instead of being trusted.
     ///
+    /// Version 4: area for closed curves and hatches.
     /// Version 3: nested block provenance - Container, Depth and IsXref columns.
     /// Version 2: unsupported-entity census and constant attributes.
     /// Version 1: entity + attribute CSV as first shipped.
     /// </summary>
     public static class HarvestSchema
     {
-        public const int Version = 3;
+        public const int Version = 4;
 
         /// <summary>
         /// The assembly's informational version with the source-revision suffix removed:

@@ -31,6 +31,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 Y: center.Y,
                 Z: center.Z,
                 Length: CurveLength.TryMeasure(circle, context),
+                Area: null,
                 Unit: context.Unit,
                 UnitCode: context.UnitCode));
         }

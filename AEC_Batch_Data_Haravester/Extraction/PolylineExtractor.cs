@@ -26,6 +26,7 @@ namespace AEC_Batch_Data_Haravester.Extraction
                 Y: null,
                 Z: null,
                 Length: CurveLength.TryMeasure(polyline, context),
+                Area: CurveLength.TryArea(polyline, context),
                 Unit: context.Unit,
                 UnitCode: context.UnitCode));
         }

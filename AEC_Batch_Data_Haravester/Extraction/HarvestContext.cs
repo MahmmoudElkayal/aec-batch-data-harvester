@@ -131,6 +131,30 @@ namespace AEC_Batch_Data_Haravester.Extraction
         public double ScaleLength(double length) => length * Scale;
 
         /// <summary>
+        /// How much a planar area grows under <see cref="Transform"/>: the magnitude of the
+        /// cross product of the transformed X and Y unit vectors. This is exact for any
+        /// affine block transform, including a non-uniform scale, where squaring
+        /// <see cref="Scale"/> would over-report by the largest axis ratio.
+        /// </summary>
+        public double AreaScale
+        {
+            get
+            {
+                Point3d origin = TransformPoint(Point3d.Origin);
+                Point3d alongX = TransformPoint(new Point3d(1.0, 0.0, 0.0));
+                Point3d alongY = TransformPoint(new Point3d(0.0, 1.0, 0.0));
+
+                var x = new Vector3d(alongX.X - origin.X, alongX.Y - origin.Y, alongX.Z - origin.Z);
+                var y = new Vector3d(alongY.X - origin.X, alongY.Y - origin.Y, alongY.Z - origin.Z);
+
+                return x.CrossProduct(y).Length;
+            }
+        }
+
+        /// <summary>Apply <see cref="AreaScale"/> to an area measured in block space.</summary>
+        public double ScaleArea(double area) => area * AreaScale;
+
+        /// <summary>
         /// The constant attributes of a block definition, in definition order.
         ///
         /// Constant attributes are the ones AutoCAD does not copy onto the reference: the

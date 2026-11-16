@@ -14,8 +14,8 @@ They exist so that a refactor cannot silently change what the pipeline produces.
 | `summary.csv` | Drawing, entity row/byte/SHA-256, attribute row/byte/SHA-256, and both file names |
 | `README.md` | This file |
 
-Current baseline: 6,748 entity rows (577,263 bytes merged) and 219 attribute rows
-(8,824 bytes merged) across three drawings, at output schema 3.
+Current baseline: 6,748 entity rows (586,109 bytes merged) and 219 attribute rows
+(8,824 bytes merged) across three drawings, at output schema 4.
 
 `summary.csv` is the quick check: if a hash changed, something changed. If a hash did not
 change, nothing did.
@@ -46,11 +46,13 @@ read and explained in the commit message. Re-baselining is a reviewed decision, 
 to make a failing diff go away.
 
 The plan lists which phases may move the baseline: 1, 3 and 5. Phases 2, 4 and 6 must not.
-The baseline has been re-captured three times: after Phase 3 (one file per drawing,
+The baseline has been re-captured four times: after Phase 3 (one file per drawing,
 supervisor-owned keys), after Phase 5 (line/arc/circle/text/solid extraction, attributes, paper
-space), and at schema 3 (nested provenance columns: `Container`, `Depth`, `IsXref`, plus
-`Container` in the attribute file). The schema-3 re-capture was verified to add only the empty
-default columns: every pre-existing value was identical and the row counts did not move.
+space), at schema 3 (nested provenance columns: `Container`, `Depth`, `IsXref`, plus
+`Container` in the attribute file), and at schema 4 (the `Area` column). The schema-3
+re-capture was verified to add only the empty default columns; the schema-4 re-capture was
+verified the same way, and its one non-empty change was `Area` becoming real on 362 closed
+polylines. No row was added, removed or reordered in either re-capture.
 
 ## Format notes
 
