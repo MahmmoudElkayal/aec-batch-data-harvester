@@ -39,6 +39,7 @@ namespace Harvest.Checks
             ManifestChecks();
             TimeoutVerdictChecks();
             BatchSummaryChecks();
+            ChunkFileChecks();
             SchemaChecks();
 
             Console.WriteLine();
@@ -536,6 +537,54 @@ namespace Harvest.Checks
                 using JsonDocument doc = Parse(BatchSummaryJson.Build(0, 0, 0, 0));
                 return Expect(doc.RootElement.GetProperty("perDrawingMs").GetDouble() == 0.0,
                     "perDrawingMs");
+            });
+        }
+
+        // ------------------------------------------------------------ chunk files
+
+        private static void ChunkFileChecks()
+        {
+            Section("parallel chunk files");
+
+            Check("a chunk id suffixes the files a supervisor reads", () =>
+            {
+                Environment.SetEnvironmentVariable(HarvestOptions.ChunkIdVariable, "007");
+                try
+                {
+                    return Expect(HarvestOptions.CurrentMarkerFileName == "_current-007.txt",
+                            "marker was " + HarvestOptions.CurrentMarkerFileName)
+                        ?? Expect(HarvestOptions.BatchSummaryFileName == "_batch-007.json",
+                            "summary was " + HarvestOptions.BatchSummaryFileName)
+                        ?? Expect(HarvestOptions.DiagnosticFileName == "_harvest-007.error.txt",
+                            "diagnostic was " + HarvestOptions.DiagnosticFileName);
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable(HarvestOptions.ChunkIdVariable, null);
+                }
+            });
+
+            Check("no chunk id keeps the historical file names", () =>
+            {
+                Environment.SetEnvironmentVariable(HarvestOptions.ChunkIdVariable, null);
+                return Expect(HarvestOptions.CurrentMarkerFileName == "_current.txt", "marker")
+                    ?? Expect(HarvestOptions.BatchSummaryFileName == "_batch.json", "summary")
+                    ?? Expect(HarvestOptions.DiagnosticFileName == "_harvest.error.txt",
+                        "diagnostic");
+            });
+
+            Check("an id that is not a file name is sanitised", () =>
+            {
+                Environment.SetEnvironmentVariable(HarvestOptions.ChunkIdVariable, "../a b\\c");
+                try
+                {
+                    return Expect(HarvestOptions.CurrentMarkerFileName == "_current-abc.txt",
+                        "marker was " + HarvestOptions.CurrentMarkerFileName);
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable(HarvestOptions.ChunkIdVariable, null);
+                }
             });
         }
 

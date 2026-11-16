@@ -74,6 +74,7 @@ rebuilt from the per-drawing files, so it never contains a drawing twice.
 |---|---|
 | `AEC_HARVEST_CHUNK` | drawings per Core Console process (default 50) |
 | `AEC_HARVEST_TIMEOUT` | seconds per chunk before the process is killed (default 300) |
+| `AEC_HARVEST_PARALLEL` | chunk processes running at once (default 1, cap 16). Each chunk is a full AutoCAD process |
 | `AEC_HARVEST_EXCEL_SAFE=1` | prefix text starting with `= + - @` or a tab with `'` so Excel does not treat it as a formula. Text columns only; numeric columns are untouched. Off by default because it changes real layer names |
 | `AEC_HARVEST_UTF8_BOM=1` | write a UTF-8 BOM (plugin and merge) so Windows Excel decodes non-ASCII text correctly. Off by default because parsers do not want one |
 
@@ -208,24 +209,34 @@ and nothing else.
 ```
 RunPipeline.bat                         supervisor
    ├─ build-manifest.ps1                key|path, one line per drawing
-   ├─ for each chunk of AEC_HARVEST_CHUNK drawings
-   │    └─ accoreconsole.exe /i <first> /s <generated .scr> /readonly
-   │         └─ HarvestBatch          (one process, many side databases)
-   │              ├─ read the chunk manifest
-   │              ├─ for each drawing: open as a side database
-   │              │    ├─ read-only Transaction
-   │              │    ├─ model space, then every paper layout
-   │              │    ├─ registry → extractor → entity rows + attribute rows
-   │              │    └─ temp-then-rename both per-drawing files
-   │              └─ write .ok only after the files exist
-   ├─ kill the chunk on AEC_HARVEST_TIMEOUT; mark the in-flight drawing .fail
+   ├─ up to AEC_HARVEST_PARALLEL chunk processes at once
+   │    └─ for each chunk of AEC_HARVEST_CHUNK drawings
+   │         └─ accoreconsole.exe /i <first> /s <generated .scr> /readonly
+   │              └─ HarvestBatch     (one process, many side databases)
+   │                   ├─ read the chunk manifest
+   │                   ├─ for each drawing: open as a side database
+   │                   │    ├─ read-only Transaction
+   │                   │    ├─ model space, then every paper layout
+   │                   │    ├─ registry → extractor → entity rows + attribute rows
+   │                   │    └─ temp-then-rename both per-drawing files
+   │                   └─ write .ok only after the files exist
+   ├─ kill a chunk on AEC_HARVEST_TIMEOUT; mark its in-flight drawing .fail
+   ├─ combine the per-chunk _batch-<id>.json into _batch.json
    └─ merge-rows.ps1                    only drawings with .ok, sorted, byte-identical
 ```
 
 Chunking exists because AutoCAD startup costs ~1.6 s while the work is ~40–80 ms per drawing:
 opening side databases inside one session amortises the startup. The process boundary stays
 as the isolation layer, so a crash costs at most one chunk, and the per-drawing results
-already published are not lost.
+already published are not lost. Parallel chunks are the same idea one level up: the three-
+drawing corpus takes 6.9 s serially and 2.8 s with three chunks, because the cost is startup
+and the drawings do not share state.
+
+Two chunks cannot share the fixed-name files that describe a process. Each child is given
+`AEC_HARVEST_CHUNK_ID` and writes `_status\_current-<id>.txt`, `_status\_batch-<id>.json`
+and `_status\_harvest-<id>.error.txt`; the supervisor reads the marker matching the chunk it
+killed and writes the combined `_batch.json`. Per-drawing outputs were already keyed by the
+drawing, so they needed no change.
 
 ## Design notes (things that are easy to get wrong)
 
@@ -246,8 +257,8 @@ These were found by testing, not by reading the docs:
 6. **A side-database drawing has no `Document`.** Layout enumeration goes through the
    `BlockTable` (`IsLayout`), not `LayoutManager`, which is why paper space works in a batch.
 7. **One bad drawing must be one `.fail`.** The engine catches per drawing; the supervisor
-   kills a hung chunk and blames the drawing named in `_status\_current`, then resume runs
-   only what did not report.
+   kills a hung chunk and blames the drawing named in that chunk's `_status\_current-<id>.txt`,
+   then resume runs only what did not report.
 8. **A constant attribute is not on the block reference.** AutoCAD creates no `Attribute`
    for it — the definition is used for every insertion (bit 2 of DXF group 70). Reading only
    `BlockReference.AttributeCollection` drops every constant value; the definition's
@@ -298,17 +309,15 @@ powershell -File tools\capture-golden.ps1 -SkipRun -Check
 
 The short version:
 
-1. **Nested blocks and xrefs** — largest remaining coverage gap; recursion needs
-   `BlockTransform` composition, a visited set and a depth cap, and xref rows need
-   `IsFromExternalReference`
-2. **Parallel chunks** — multiple `accoreconsole` processes are a documented pattern; the
-   supervisor first needs per-chunk timeout markers
-3. **One `Curve` fallback** — catches `Polyline2d/3d`, `Ellipse`, `Spline`, `Ray` and
-   `Xline` in one extractor, because the registry already matches by inheritance
-4. **Area** — `Curve.Area` and `Hatch.Area` behind a new column, which is where takeoff
-   actually lives
-5. **Dynamic-block fixture** — settles the one untested block case
-6. **Structured side output** — JSON/parquet for tooling
+1. **Dynamic-block fixture** — settles the one untested block case
+2. **CI** — split the dependency-free core out of the plug-in so the checks can build on a
+   hosted runner, then run them on every push
+3. **AEC verticals** — property sets and spaces need `AecBaseMgd`, an install/licensing
+   decision rather than code
+4. **Structured side output** — JSON/parquet for tooling
+
+Shipped since the first list: nested blocks and xrefs, parallel chunks, the single `Curve`
+fallback and `Area`.
 
 ## License
 

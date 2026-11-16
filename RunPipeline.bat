@@ -51,6 +51,9 @@ if not defined AEC_HARVEST_TIMEOUT set "AEC_HARVEST_TIMEOUT=300"
 REM Drawings per Core Console process. One process amortises ~1.6 s of AutoCAD startup
 REM across the chunk; the chunk size bounds how much a hard crash can cost.
 if not defined AEC_HARVEST_CHUNK set "AEC_HARVEST_CHUNK=50"
+REM Chunk processes running at once. Each one is a full AutoCAD instance, so this is 1 by
+REM default; raise it only where there is memory to spare and many drawings to harvest.
+if not defined AEC_HARVEST_PARALLEL set "AEC_HARVEST_PARALLEL=1"
 
 title AEC Batch Data Harvester
 
@@ -165,7 +168,7 @@ echo Output  : %CSV%
 echo Attributes: %ATTRCSV%
 echo Rows    : %ROWS%
 if defined FRESH (echo Mode    : fresh - per-drawing files reset) else (echo Mode    : append - finished drawings are kept, not re-harvested)
-echo Timeout : %AEC_HARVEST_TIMEOUT% s per chunk, %AEC_HARVEST_CHUNK% drawings per process
+echo Timeout : %AEC_HARVEST_TIMEOUT% s per chunk, %AEC_HARVEST_CHUNK% drawings per process, %AEC_HARVEST_PARALLEL% at once
 echo ---------------------------------------------------------------------------
 
 REM ---------------------------------------------------------------- the engine
@@ -174,7 +177,7 @@ REM process boundary: timeout, kill, and the .fail for a drawing that was in fli
 set "BATCHRC=0"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\tools\run-harvest-batch.ps1" ^
     -Root "%ROOT%" -Manifest "%MANIFEST%" -Script "%SCRIPT%" -Console "%CONSOLE%" ^
-    -TimeoutSeconds %AEC_HARVEST_TIMEOUT% -ChunkSize %AEC_HARVEST_CHUNK%
+    -TimeoutSeconds %AEC_HARVEST_TIMEOUT% -ChunkSize %AEC_HARVEST_CHUNK% -Parallel %AEC_HARVEST_PARALLEL%
 set "BATCHRC=%ERRORLEVEL%"
 
 REM Counts come from the status files, which are the only authoritative verdict.
@@ -216,7 +219,7 @@ if exist "%ATTRCSV%" (
 if %FAILED% GTR 0 (
     echo [WARN] %FAILED% drawing^(s^) failed.
     echo        Per-drawing reason : "%STATUSDIR%\^<key^>.error.txt"
-    echo        Batch-level reason : "%STATUSDIR%\_harvest.error.txt"
+    echo        Batch-level reason : "%STATUSDIR%\_harvest*.error.txt"
     echo        Process log        : "%LOGS%\batch-*.log"
 )
 
@@ -243,6 +246,7 @@ echo   /q        do not pause at the end
 echo.
 echo   AEC_HARVEST_TIMEOUT  seconds per chunk before the process is killed (default 300)
 echo   AEC_HARVEST_CHUNK    drawings per Core Console process (default 50)
+echo   AEC_HARVEST_PARALLEL chunk processes at once (default 1, cap 16)
 echo   AEC_HARVEST_EXCEL_SAFE=1   prefix text that starts with = + - @ or a tab with an
 echo                              apostrophe, so Excel does not treat it as a formula
 echo                              (off by default: it changes real layer names)

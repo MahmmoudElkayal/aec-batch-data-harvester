@@ -108,3 +108,7 @@ output (matches `DATAEXTRACTION`), but less control over schema/flattening.
   not have a named extractor, and `Area` is reported for closed curves and hatches. This is
   why the acceptance fixture's unsupported probe is a 3DFACE: a RAY is a curve and is now
   harvested.
+- Chunk processes can run concurrently (`AEC_HARVEST_PARALLEL`, default 1). Each child gets
+  `AEC_HARVEST_CHUNK_ID`, so the marker, chunk summary and chunk diagnostic are per-process
+  files; the supervisor writes the combined `_batch.json` afterwards. The three-drawing
+  corpus drops from 6.9 s to 2.8 s with three chunks, and the merged CSV is byte-identical.

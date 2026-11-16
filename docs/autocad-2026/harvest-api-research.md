@@ -167,7 +167,7 @@ provenance columns.
 re-harvested exactly that drawing (`ms` 11 → 46) and left the other two untouched
 (`ms` 80 and 54 unchanged).
 
-## 7. Parallel chunks — supported, with one blocker to remove first
+## 7. Parallel chunks — implemented, one blocker removed first
 
 **Sources:** [Autodesk's own write-up](https://blog.autodesk.io/parallel-aggregation-using-accoreconsole/)
 ("parallel aggregation can be used to launch multiple instances of AccoreConsole"), and a
@@ -175,13 +175,31 @@ re-harvested exactly that drawing (`ms` 11 → 46) and left the other two untouc
 showing `Parallel.ForEach` over Core Console instances beating a serial loop.
 
 The engine is 39–77 ms per drawing while process start is ~1.6 s, so the win is real. The
-blocker is ours: `run-harvest-batch.ps1` uses one global `_status\_current.txt` to blame a
-timeout, and concurrent chunks would overwrite each other's marker and misattribute the
-failure.
+blocker was ours: `run-harvest-batch.ps1` used one global `_status\_current.txt` to blame a
+timeout, so concurrent chunks would overwrite each other's marker and misattribute the
+failure. `_batch.json` and `_harvest.error.txt` had the same collision.
 
-**Plan:** per-chunk markers (`_current-<chunk>.txt`) and per-chunk log names, then a
-bounded worker set (`AEC_HARVEST_PARALLEL`, default 1 so existing behaviour is unchanged).
-Merge stays deterministic because each drawing writes its own files.
+**Change:** each child process gets `AEC_HARVEST_CHUNK_ID` and writes
+`_current-<id>.txt`, `_batch-<id>.json` and `_harvest-<id>.error.txt`
+(`HarvestOptions.ChunkIdSuffix`, sanitised to file-name-safe characters). The supervisor's
+loop became a slot set: `AEC_HARVEST_PARALLEL` chunks run at once (default 1, cap 16), a
+freed slot takes the next pending chunk, and the supervisor writes the combined `_batch.json`
+(`drawings`, `ok`, `failed`, `engineMs`, `perDrawingMs`, `parallel`, `chunks`) after every
+chunk has finished. Per-drawing files were already keyed by the drawing and needed no change,
+which is why the merged CSV is byte-identical to a serial run.
+
+**Two supervisor bugs the parallel test exposed, both fixed.** First, `taskkill` writes its
+diagnostics to stderr, and under `$ErrorActionPreference = 'Stop'` a redirected native stderr
+line is a terminating error: the supervisor died mid-kill and the survivor published a `.ok`
+after being overruled. The kill now runs in a child `cmd` that redirects its own streams.
+Second, the deadline check ran one slot at a time, so handling a kill gave a neighbour time
+to finish; deadlines are now evaluated for every slot first, and every expired tree is
+killed before any of them is waited on.
+
+**Proof:** the three-drawing corpus runs in 2.8 s wall with three chunks (6.9 s serially),
+the merge matches the golden baseline byte for byte, each chunk writes its own summary, and
+no blame marker survives. The acceptance suite forces `timeout=0` with two chunks and gets
+three `.fail`, zero `.ok` and zero row files, deterministically.
 
 ## 8. CI — the checks cannot build without AutoCAD
 

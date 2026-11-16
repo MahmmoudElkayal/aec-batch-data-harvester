@@ -171,11 +171,14 @@ try {
     Write-Host ''
     Write-Host '[4] a drawing that never returns is killed and marked .fail'
 
-    # A 1-second budget cannot possibly open a drawing, so every chunk is killed before it
-    # can report. This exercises the mechanism - kill, blame one drawing, never .ok - and
-    # a stuck drawing reaches it the same way.
-    $env:AEC_HARVEST_TIMEOUT = '1'
+    # A zero-second budget kills every chunk at the first poll - before Core Console can
+    # open a drawing, which takes over a second even with a warm cache. This exercises the
+    # mechanism (kill, blame one drawing, never .ok) deterministically; a stuck drawing
+    # reaches it the same way. Two chunks at once also proves each kill reads its own
+    # blame marker rather than a neighbour's.
+    $env:AEC_HARVEST_TIMEOUT = '0'
     $env:AEC_HARVEST_CHUNK = '1'
+    $env:AEC_HARVEST_PARALLEL = '2'
     try {
         $run = Invoke-Pipeline
         Check ($run.Code -eq 2) "exit code is 2 (was $($run.Code))"
@@ -183,6 +186,7 @@ try {
     finally {
         Remove-Item Env:AEC_HARVEST_TIMEOUT -ErrorAction SilentlyContinue
         Remove-Item Env:AEC_HARVEST_CHUNK -ErrorAction SilentlyContinue
+        Remove-Item Env:AEC_HARVEST_PARALLEL -ErrorAction SilentlyContinue
     }
 
     $timeoutFails = @(Get-ChildItem $statusDir -Filter *.fail -File -ErrorAction SilentlyContinue)
@@ -214,11 +218,52 @@ try {
     $stats = Get-Content $summary -Raw | ConvertFrom-Json
     Check ([double]$stats.perDrawingMs -le 100.0) `
         ("the recovered run is still {0} ms/drawing" -f $stats.perDrawingMs)
+
+    # ------------------------------------------------------------------ 6
+    Write-Host ''
+    Write-Host '[6] parallel chunks produce one answer'
+
+    # Three drawings, three chunks, three processes at once: the result must be the same
+    # bytes, each chunk must own its summary, and the combined summary must account for
+    # all of them. This is the wiring the unit check only names.
+    $env:AEC_HARVEST_PARALLEL = '3'
+    $env:AEC_HARVEST_CHUNK = '1'
+    try {
+        $run = Invoke-Pipeline
+        Check ($run.Code -eq 0) "a parallel run exits 0 (was $($run.Code))"
+        Check ((Get-RowCount $csv) -eq 6748) 'it still merges 6,748 rows'
+        Check ((Get-CsvHash) -eq $baselineHash) 'and writes the same bytes as a serial run'
+
+        $chunkSummaries = @(Get-ChildItem $statusDir -Filter '_batch-*.json' -File)
+        Check ($chunkSummaries.Count -eq 3) `
+            "each chunk wrote its own summary (found $($chunkSummaries.Count))"
+
+        $summed = 0
+        foreach ($file in $chunkSummaries) {
+            $chunk = Get-Content $file.FullName -Raw | ConvertFrom-Json
+            $summed += [int]$chunk.drawings
+        }
+        Check ($summed -eq 3) "the chunk summaries account for every drawing (found $summed)"
+
+        $markers = @(Get-ChildItem $statusDir -Filter '_current*.txt' -File)
+        Check ($markers.Count -eq 0) "no blame marker survived the run (found $($markers.Count))"
+
+        $stats = Get-Content $summary -Raw | ConvertFrom-Json
+        Check ($stats.parallel -eq 3) "the combined summary records the concurrency ($($stats.parallel))"
+        Check ($stats.chunks -eq 3) "and the chunk count ($($stats.chunks))"
+        Check ($stats.ok -eq $stats.drawings) `
+            "every drawing reported ok ($($stats.ok)/$($stats.drawings))"
+    }
+    finally {
+        Remove-Item Env:AEC_HARVEST_PARALLEL -ErrorAction SilentlyContinue
+        Remove-Item Env:AEC_HARVEST_CHUNK -ErrorAction SilentlyContinue
+    }
 }
 finally {
     Remove-Broken
     Remove-Item Env:AEC_HARVEST_TIMEOUT -ErrorAction SilentlyContinue
     Remove-Item Env:AEC_HARVEST_CHUNK -ErrorAction SilentlyContinue
+    Remove-Item Env:AEC_HARVEST_PARALLEL -ErrorAction SilentlyContinue
 }
 
 Write-Host ''

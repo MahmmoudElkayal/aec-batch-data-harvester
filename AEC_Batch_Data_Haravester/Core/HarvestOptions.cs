@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Text;
 
 namespace AEC_Batch_Data_Haravester.Core
 {
@@ -33,6 +34,15 @@ namespace AEC_Batch_Data_Haravester.Core
         public const string BatchManifestVariable = "AEC_HARVEST_BATCH";
 
         /// <summary>
+        /// Set by the supervisor to the id of this chunk process. It suffixes the
+        /// fixed-name files a supervisor reads - the current-drawing marker, the chunk
+        /// summary and the chunk-level diagnostic - so two chunks running at once cannot
+        /// overwrite each other's. Blank in a single-chunk run, which keeps the historical
+        /// names.
+        /// </summary>
+        public const string ChunkIdVariable = "AEC_HARVEST_CHUNK_ID";
+
+        /// <summary>
         /// Opt-in nested block traversal. Off by default because it multiplies rows on a
         /// drawing whose blocks contain geometry, and because an inner definition object
         /// is reached once per placement. On for exactly "1", like every other switch.
@@ -46,21 +56,52 @@ namespace AEC_Batch_Data_Haravester.Core
         /// <summary>
         /// Where a failure that has no key to name itself is explained. Fixed name, so the
         /// supervisor can look for exactly one file; no key can collide with it because
-        /// every key ends in -&lt;8 hex&gt;.
+        /// every key ends in -&lt;8 hex&gt;. A chunk id suffixes it, for the same reason it
+        /// suffixes the marker: concurrent chunks must not overwrite the explanation.
         /// </summary>
-        public const string DiagnosticFileName = "_harvest.error.txt";
+        public static string DiagnosticFileName => "_harvest" + ChunkIdSuffix + ".error.txt";
 
         /// <summary>
         /// The drawing the engine is working on, so a killed process can be blamed on one
-        /// drawing instead of the whole chunk. Fixed name, same collision argument.
+        /// drawing instead of the whole chunk. Fixed name, same collision argument, plus the
+        /// chunk id so each concurrent chunk has its own marker.
         /// </summary>
-        public const string CurrentMarkerFileName = "_current.txt";
+        public static string CurrentMarkerFileName => "_current" + ChunkIdSuffix + ".txt";
 
         /// <summary>
         /// What the engine did, in one JSON object: counts and engine time. Read by the
-        /// supervisor's summary and by the Phase 4 acceptance check.
+        /// supervisor's summary and by the Phase 4 acceptance check. Per chunk when parallel
+        /// chunks run; the supervisor writes the combined <c>_batch.json</c>.
         /// </summary>
-        public const string BatchSummaryFileName = "_batch.json";
+        public static string BatchSummaryFileName => "_batch" + ChunkIdSuffix + ".json";
+
+        /// <summary>
+        /// <c>-&lt;id&gt;</c> when the supervisor set a chunk id, otherwise empty. Only
+        /// characters that are safe in a file name survive, because the id is spliced into
+        /// three of them.
+        /// </summary>
+        public static string ChunkIdSuffix
+        {
+            get
+            {
+                string? id = Environment.GetEnvironmentVariable(ChunkIdVariable);
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return string.Empty;
+                }
+
+                var safe = new StringBuilder();
+                foreach (char c in id!.Trim())
+                {
+                    if (char.IsLetterOrDigit(c) || c == '-' || c == '_')
+                    {
+                        safe.Append(c);
+                    }
+                }
+
+                return safe.Length == 0 ? string.Empty : "-" + safe;
+            }
+        }
 
         private HarvestOptions(
             string outputFolder, string key, bool excelSafe, bool utf8Bom, bool nestedBlocks)
