@@ -131,3 +131,5 @@ output (matches `DATAEXTRACTION`), but less control over schema/flattening.
   `Sample\en-us\Dynamic Blocks\Multileader Tools.dwg` does show the read path working: the
   block rows carry `_TagCircle - Metric`, `_DetailCallout - Metric`, ... rather than the
   anonymous `*U...` definitions the references actually point at.
+- Merged `feat/*` and `fix/*` branches are kept on `origin` permanently; they are the record
+  of how each change was built. `delete_branch_on_merge` is off and no workflow prunes them.

@@ -350,6 +350,12 @@ The short version:
 Shipped since the first list: nested blocks and xrefs, parallel chunks, the single `Curve`
 fallback and `Area`, and CI over the AutoCAD-free core.
 
+## Branches
+
+Merged feature branches are kept permanently. `feat/*` and `fix/*` stay on `origin` after
+they are merged, as the record of how each change was built; nothing prunes them and
+GitHub's "automatically delete head branches" setting is off. Do not delete them.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
