@@ -16,10 +16,10 @@ managed members that 2026 ships; where a member was renamed or added, the 2026 i
 | 4 | Nested blocks and xrefs are invisible | `BlockTransform`, `IsFromExternalReference` and `Database.ResolveXrefs` cover the walk and the external contents | **Changed** |
 | 5 | Schema is thin for takeoff | `Curve.Area`, `Hatch.Area`, `Polyline2d/3d : Curve` | **Changed** |
 | 6 | `/append` merges two extraction rules | No built-in contract version; we must write one | **Changed** |
-| 7 | Chunks run one at a time | Multiple `accoreconsole` processes are a documented pattern | Planned |
+| 7 | Chunks run one at a time | Multiple `accoreconsole` processes are a documented pattern | **Changed** |
 | 8 | No CI | The checks reference the AutoCAD plug-in, so cloud CI cannot build them | **Changed** |
-| 9 | Dynamic blocks are untested | No API issue; the corpus has none | Planned |
-| 10 | AEC property sets | Managed AEC assemblies are not installed here | Environment |
+| 9 | Dynamic blocks are untested | Read path is correct; a fixture needs the desktop block editor | Deferred |
+| 10 | AEC property sets | Managed AEC assemblies are not installed here | Environment, now diagnosed |
 
 ---
 
@@ -230,19 +230,54 @@ Those last two cover the parts a `dotnet build` cannot see.
 rules hold. The solution still builds with the plug-in present, and the pipeline output is
 still byte-identical to the golden baseline (6,748 rows / 219 attributes).
 
-## 9. Dynamic-block fixture
+## 9. Dynamic-block fixture — deferred, with the blocker identified
 
-No API problem: `DynamicBlockTableRecord` is already used for the definition name. The
-corpus simply has no dynamic block, so the claim is untested. A fixture must create a block
-with a parameter and insert it, then assert that `BlockDefinition` is the real name rather
-than `*U…`. Planned with the nested-block work, because both need fixture-building.
+No API problem on the read side: `BlockInfo.DefinitionId` already resolves
+`BlockReference.DynamicBlockTableRecord`, so a dynamic block's definition name is the real
+name rather than `*U12`. The corpus has no dynamic block, so the claim is untested.
 
-## 10. AEC verticals
+**What was verified trying to build the fixture:**
 
-Property sets, spaces and AEC schedules come from `AecBaseMgd`/`AecArchMgd`, which are not
-installed on this machine (confirmed in `batch-harvester-notes.md`). Until they are, AEC
-objects arrive as proxies and now appear in the census as `ACAD_PROXY_ENTITY`. That is a
-licensing/install decision, not a code change.
+1. The managed API cannot *create* one. Reading `acdbmgd.dll`'s metadata directly (not
+   loading it) finds exactly four dynamic-block types -
+   `DynamicBlockReferenceProperty`, `...Collection`, `...Enumerator` and `...UnitsType` -
+   all read/evaluate. There is no parameter-creation type; the Dynamics creation API is
+   ObjectARX C++ only.
+2. Core Console cannot author one: `_.BEDIT` returns "Unknown command" there, because the
+   block editor is a desktop feature.
+3. Desktop automation is dialog-bound: `acad.exe /b script.scr` did not reach the script
+   (start-up UI), and COM `SendCommand` opened the block editor but blocked on
+   `BPARAMETER` before it accepted the parameter prompts.
+
+**Blocker:** a fixture DWG must be authored once in the desktop block editor
+(`BLOCK` → `BEDIT` → `BPARAMETER` → insert → save). Once such a file exists, the assertion
+is mechanical: harvest it, check the block row's `BlockDefinition` equals the authored name,
+and check the harvest does not fail. The read path needs no code change.
+
+## 10. AEC verticals — an install decision, now diagnosed instead of buried
+
+Property sets, spaces and schedules belong to the AEC verticals, whose managed assemblies
+(`AecBaseMgd`, `AecArchMgd`, …) are not part of a plain AutoCAD install. Verified on this
+machine:
+
+- no `AecBaseMgd.dll` anywhere under `C:\Program Files\Autodesk`, and no Architecture, MEP
+  or Civil 3D product folder - only AutoCAD 2026 and Revit 2024;
+- the AutoCAD 2026 managed reference index shipped in `docs/autocad-2026/` lists no AEC
+  namespace at all: the vertical API is a separate documentation set and a separate license.
+
+So an AEC object arrives as `ACAD_PROXY_ENTITY`: no geometry, no property data, nothing to
+extract. This is not a code defect and no amount of extractor work fixes it.
+
+**Change (the part that is code):** the supervisor already aggregated the census, but a
+proxy looked exactly like a class the harvester had simply not implemented. It now prints a
+separate `Proxies :` line naming the count, the cause (missing vertical assemblies) and both
+fixes (harvest where the vertical is installed, or export to plain AutoCAD objects).
+`tools/test-batch-engine.ps1` section 7 proves it from a synthetic verdict without launching
+AutoCAD.
+
+**Decision for an operator:** install the vertical on the harvest machine - same bitness and
+release as AutoCAD - or flatten the drawings before harvest. Until then, the proxy count is
+the visible, explained limit of a plain-AutoCAD run.
 
 ---
 

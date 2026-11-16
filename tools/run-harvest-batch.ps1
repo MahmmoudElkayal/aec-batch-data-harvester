@@ -549,6 +549,18 @@ if ($unsupportedTotals.Count -gt 0) {
         Sort-Object -Property Value -Descending | Select-Object -First 8
     $rendered = ($top | ForEach-Object { '{0}={1}' -f $_.Key, $_.Value }) -join ', '
     Write-Host ("Skipped : {0}" -f $rendered)
+
+    # A proxy is not "a class we chose not to extract": it is an object whose defining
+    # application is absent, so its geometry and property data do not exist in this
+    # process at all. That has a different fix, and naming it here is the difference
+    # between "the harvester is incomplete" and "install the vertical".
+    if ($unsupportedTotals.ContainsKey('ACAD_PROXY_ENTITY')) {
+        Write-Host ("Proxies : {0} object(s) arrived as ACAD_PROXY_ENTITY." -f $unsupportedTotals['ACAD_PROXY_ENTITY'])
+        Write-Host '          AEC verticals (Architecture, MEP, Civil 3D) store objects in their own'
+        Write-Host '          classes. Without that vertical installed here, AutoCAD cannot read them:'
+        Write-Host '          no geometry, no property sets, no schedules. Harvest the drawing where'
+        Write-Host '          the vertical is installed, or export it to plain AutoCAD objects first.'
+    }
 }
 
 if ($unreported -gt 0) {

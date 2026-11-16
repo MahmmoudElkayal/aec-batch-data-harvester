@@ -258,6 +258,49 @@ try {
         Remove-Item Env:AEC_HARVEST_PARALLEL -ErrorAction SilentlyContinue
         Remove-Item Env:AEC_HARVEST_CHUNK -ErrorAction SilentlyContinue
     }
+
+    # ------------------------------------------------------------------ 7
+    Write-Host ''
+    Write-Host '[7] a proxy object is named as a missing vertical, not just counted'
+
+    # No AutoCAD needed: the supervisor only aggregates verdicts that already exist. A
+    # faked .ok carrying a proxy count is the cheapest way to prove the operator gets the
+    # cause and the fix, not just "ACAD_PROXY_ENTITY=3" in a list of skipped classes.
+    $proxyRoot = Join-Path $env:TEMP ('aec-proxy-' + [guid]::NewGuid().ToString('N'))
+    try {
+        $proxyRows   = Join-Path $proxyRoot 'Output\_rows'
+        $proxyStatus = Join-Path $proxyRoot 'Output\_status'
+        New-Item -ItemType Directory -Path $proxyRows, $proxyStatus -Force | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $proxyRows 'k.csv'), "x`r`n")
+        [System.IO.File]::WriteAllText((Join-Path $proxyRows 'k.attributes.csv'), "x`r`n")
+        [System.IO.File]::WriteAllText((Join-Path $proxyStatus 'k.ok'),
+            '{"ok":true,"schema":4,"tool":"test","rows":1,"attributes":0,"ms":5,' +
+            '"unsupported":{"ACAD_PROXY_ENTITY":3}}')
+        $proxyManifest = Join-Path $proxyRoot 'manifest.txt'
+        [System.IO.File]::WriteAllText($proxyManifest, "k|C:\does-not-exist.dwg`r`n")
+
+        $console = 'C:\Program Files\Autodesk\AutoCAD 2026\accoreconsole.exe'
+        if (-not (Test-Path $console)) {
+            Write-Host '    skip  accoreconsole.exe not installed; the supervisor cannot start'
+        }
+        else {
+            $proxyOut = & powershell -NoProfile -ExecutionPolicy Bypass -File `
+                (Join-Path $Root 'tools\run-harvest-batch.ps1') `
+                -Root $proxyRoot -Manifest $proxyManifest `
+                -Script (Join-Path $Root 'Scripts\HarvestBatch.scr') -Console $console `
+                -TimeoutSeconds 5 -ChunkSize 1 -Parallel 1 2>&1 | Out-String
+            $proxyCode = $LASTEXITCODE
+
+            Check ($proxyCode -eq 0) "the aggregation exits 0 (was $proxyCode)"
+            Check ($proxyOut -match 'Skipped : ACAD_PROXY_ENTITY=3') 'the census still names the class'
+            Check ($proxyOut -match 'Proxies : 3 object') 'the proxy count is called out separately'
+            Check ($proxyOut -match 'AEC verticals') 'the cause names the missing vertical'
+            Check ($proxyOut -match 'export it to plain AutoCAD objects') 'and the alternative fix'
+        }
+    }
+    finally {
+        Remove-Item $proxyRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 finally {
     Remove-Broken

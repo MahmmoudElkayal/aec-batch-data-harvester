@@ -15,7 +15,8 @@ is what makes unattended batch processing possible.
 > **6,748 entity rows and 219 attribute rows, 0 duplicates, 39–77 ms of engine time per
 > drawing.** Every entity type in the corpus census is extracted. Nested blocks and xref
 > contents are available behind `AEC_HARVEST_NESTED=1`; curves without a named extractor and
-> hatches report area. Vertical AEC objects are still out of scope.
+> hatches report area. AEC vertical objects require that vertical's managed assemblies; where
+> they are absent they are reported as explained proxies, not silently dropped.
 
 ---
 
@@ -200,11 +201,25 @@ not:
 "unsupported":{"VIEWPORT":2},"unsupportedTotal":2
 ```
 
-`VIEWPORT`, `HATCH`, `DIMENSION`, `ACAD_PROXY_ENTITY` and every other class without an
-extractor are counted by DXF name, and the runner prints the corpus-wide totals as
+`VIEWPORT`, `DIMENSION`, `ACAD_PROXY_ENTITY` and every other class without an extractor
+are counted by DXF name, and the runner prints the corpus-wide totals as
 `Skipped : VIEWPORT=8`. Without that line, a drawing full of unsupported geometry is
 indistinguishable from an empty one. The sample corpus currently reports eight viewports
 and nothing else.
+
+A proxy is different from a class the harvester has not implemented: it is an object whose
+defining application is missing (an AEC vertical, a third-party add-on), so its geometry and
+property data do not exist in the process at all. When the census sees one, the runner adds a
+separate line naming the cause and both fixes:
+
+```
+Skipped : ACAD_PROXY_ENTITY=12
+Proxies : 12 object(s) arrived as ACAD_PROXY_ENTITY.
+          AEC verticals (Architecture, MEP, Civil 3D) store objects in their own
+          classes. Without that vertical installed here, AutoCAD cannot read them:
+          no geometry, no property sets, no schedules. Harvest the drawing where
+          the vertical is installed, or export it to plain AutoCAD objects first.
+```
 
 ## How it works
 
@@ -320,15 +335,14 @@ manifest key self-test.
 
 The short version:
 
-1. **Dynamic-block fixture** — settles the one untested block case
-2. **CI** — split the dependency-free core out of the plug-in so the checks can build on a
-   hosted runner, then run them on every push
-3. **AEC verticals** — property sets and spaces need `AecBaseMgd`, an install/licensing
-   decision rather than code
-4. **Structured side output** — JSON/parquet for tooling
+1. **Dynamic-block fixture** — the read path is correct; a fixture needs one desktop-authored
+   dynamic block (the block editor is the only way to create the parameters)
+2. **AEC verticals** — property sets and spaces need `AecBaseMgd`, an install/licensing
+   decision rather than code; missing verticals are now explained as proxies
+3. **Structured side output** — JSON/parquet for tooling
 
 Shipped since the first list: nested blocks and xrefs, parallel chunks, the single `Curve`
-fallback and `Area`.
+fallback and `Area`, and CI over the AutoCAD-free core.
 
 ## License
 

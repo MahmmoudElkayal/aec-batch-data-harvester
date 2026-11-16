@@ -115,3 +115,10 @@ output (matches `DATAEXTRACTION`), but less control over schema/flattening.
 - The AutoCAD-free half (row model, CSV contract, status payload) is its own `net10.0`
   project, and GitHub Actions builds and runs the checks against it. The workflow builds the
   checks project, never the solution: the plug-in still needs AutoCAD's assemblies.
+- AEC vertical objects are only readable where that vertical's managed assemblies are
+  installed; here they are not, so they arrive as `ACAD_PROXY_ENTITY`. The supervisor now
+  prints them as a separate `Proxies :` line with the cause and both fixes rather than
+  listing them as one more unextracted class.
+- A dynamic-block fixture is still outstanding. The read path is already correct; creating
+  the fixture needs the desktop block editor, because the managed API exposes only
+  `DynamicBlockReferenceProperty*` and Core Console has no `BEDIT`.
