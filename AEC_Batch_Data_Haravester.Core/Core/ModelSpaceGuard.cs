@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace AEC_Batch_Data_Haravester.Extraction
+namespace AEC_Batch_Data_Haravester.Core
 {
     /// <summary>
     /// The policy for an unresolved model space, isolated from AutoCAD types so it can be

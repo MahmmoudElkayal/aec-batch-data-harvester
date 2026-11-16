@@ -17,7 +17,7 @@ managed members that 2026 ships; where a member was renamed or added, the 2026 i
 | 5 | Schema is thin for takeoff | `Curve.Area`, `Hatch.Area`, `Polyline2d/3d : Curve` | **Changed** |
 | 6 | `/append` merges two extraction rules | No built-in contract version; we must write one | **Changed** |
 | 7 | Chunks run one at a time | Multiple `accoreconsole` processes are a documented pattern | Planned |
-| 8 | No CI | The checks reference the AutoCAD plug-in, so cloud CI cannot build them | Planned |
+| 8 | No CI | The checks reference the AutoCAD plug-in, so cloud CI cannot build them | **Changed** |
 | 9 | Dynamic blocks are untested | No API issue; the corpus has none | Planned |
 | 10 | AEC property sets | Managed AEC assemblies are not installed here | Environment |
 
@@ -201,20 +201,34 @@ the merge matches the golden baseline byte for byte, each chunk writes its own s
 no blame marker survives. The acceptance suite forces `timeout=0` with two chunks and gets
 three `.fail`, zero `.ok` and zero row files, deterministically.
 
-## 8. CI — the checks cannot build without AutoCAD
+## 8. CI — implemented by splitting the AutoCAD-free half out
 
-`tests/Harvest.Checks` has a `ProjectReference` to the plug-in, which references
-`acdbmgd`/`acmgd` from the AutoCAD install folder. A GitHub-hosted runner does not have
-them, so neither the build nor the checks can run there as laid out.
+**Sources:** GitHub's
+[.NET build-and-test guide](https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-.net)
+(`setup-dotnet` is the recommended way to pin the SDK; `windows-latest` is the runner image),
+and the [hosted-runner software list](https://docs.github.com/en/actions/concepts/runners/github-hosted-runners),
+which has the .NET SDK but obviously not AutoCAD.
 
-Two options, in order of value:
-1. Split `Core/`, `Output/` and `Reporting/` into a dependency-free
-   `AEC_Batch_Data_Haravester.Core` project. The checks already only exercise those, and
-   the split makes the "no AutoCAD here" claim structural rather than a comment.
-2. Until then, a workflow can run only `build-manifest.ps1 -SelfTest` and a link check,
-   which is honest but thin.
+`tests/Harvest.Checks` referenced the plug-in, which references `acdbmgd`/`acmgd` from the
+AutoCAD install folder. A hosted runner does not have those, so neither the build nor the
+checks could run there.
 
-Not implemented; the split is an architecture change, not a test tweak.
+**Change:** `Core/`, `Output/` and `Reporting/` moved into
+`AEC_Batch_Data_Haravester.Core.csproj`, which targets `net10.0` (not `-windows`) and has no
+Autodesk or Windows-specific reference at all; the plug-in and the checks both reference it.
+`ModelSpaceGuard` moved with them, because it is a pure policy that the checks exercise. The
+.NET 10 TFM is deliberate: a Windows-only or Autodesk-only API that creeps in fails the core
+build rather than becoming a latent dependency.
+
+`.github/workflows/ci.yml` then builds **only** `tests/Harvest.Checks` (building the solution
+would pull in the plug-in and fail on the missing AutoCAD assemblies), runs the 51 checks,
+parses every `tools\*.ps1` with the PowerShell parser, and runs `build-manifest.ps1 -SelfTest`.
+Those last two cover the parts a `dotnet build` cannot see.
+
+**Proof:** locally, the Release build of the checks project emits exactly one `AEC*.dll` -
+`AEC_Batch_Data_Haravester.Core.dll` - and the checks pass, the tools parse, and the key
+rules hold. The solution still builds with the plug-in present, and the pipeline output is
+still byte-identical to the golden baseline (6,748 rows / 219 attributes).
 
 ## 9. Dynamic-block fixture
 

@@ -1,5 +1,7 @@
 # AEC Batch Data Harvester
 
+[![ci](https://github.com/MahmmoudElkayal/aec-batch-data-harvester/actions/workflows/ci.yml/badge.svg)](https://github.com/MahmmoudElkayal/aec-batch-data-harvester/actions/workflows/ci.yml)
+
 Headless batch data extraction for AutoCAD 2026 drawings. Point it at a folder of DWGs and
 get two CSVs: one row per entity (blocks, polylines, lines, arcs, circles, text, solids) and
 one row per block attribute. No AutoCAD window, no dialogs, and no modification of the
@@ -270,12 +272,13 @@ These were found by testing, not by reading the docs:
 
 ```
 AEC_Batch_Data_Haravester.slnx          solution
-AEC_Batch_Data_Haravester/
-    Commands/                           Extract_BOM and HarvestBatch entry points
-    Core/                               rows, options, manifest, timeout verdict (no AutoCAD)
-    Extraction/                         scanner, extractors, runners (AutoCAD only)
+AEC_Batch_Data_Haravester.Core/         the AutoCAD-free half (net10.0, no Autodesk reference)
+    Core/                               rows, options, manifest, timeout verdict
     Output/                             CSV schemas, escaping, temp-then-rename sinks
     Reporting/                          status JSON, per-drawing files, batch summary
+AEC_Batch_Data_Haravester/              the plug-in (net10.0-windows)
+    Commands/                           Extract_BOM and HarvestBatch entry points
+    Extraction/                         scanner, extractors, runners (AutoCAD only)
 RunPipeline.bat                         supervisor (entry point)
 Scripts/HarvestBatch.scr                Core Console script (auto-generated)
 Input_DWGs/                             drop drawings here        (git-ignored)
@@ -284,6 +287,7 @@ Logs/                                   per-chunk logs            (git-ignored)
 tests/Harvest.Checks/                   dependency-free unit checks
 tests/golden/                           frozen output baseline
 tools/                                  manifest, batch supervisor, merge, golden/checks
+.github/workflows/ci.yml                builds the core + checks on a hosted runner
 docs/autocad-2026/                      study of the ObjectARX 2026 documentation set, plus
                                         harvest-api-research.md (sources behind each gap)
 ```
@@ -296,7 +300,7 @@ execution-host constraints.
 
 ```powershell
 dotnet build AEC_Batch_Data_Haravester.slnx
-tests\Harvest.Checks\bin\Debug\net10.0-windows\Harvest.Checks.exe
+tests\Harvest.Checks\bin\Debug\net10.0\Harvest.Checks.exe
 
 powershell -File tools\test-batch-engine.ps1      # throughput, isolation, resume, timeout
 powershell -File tools\test-batch-integrity.ps1   # determinism, keys, .ok merge gate
@@ -304,6 +308,13 @@ powershell -File tools\test-failure-paths.ps1     # unreadable DWG, unwritable o
 powershell -File tools\test-coverage.ps1          # census, attributes, join, paper space
 powershell -File tools\capture-golden.ps1 -SkipRun -Check
 ```
+
+The first two commands are also what CI runs. The workflow builds only
+`tests/Harvest.Checks`, never the solution, because the plug-in needs AutoCAD's managed
+assemblies; the checks reference `AEC_Batch_Data_Haravester.Core` alone, so a hosted
+`windows-latest` runner can prove the schema, the status contract and the CSV escaping
+without AutoCAD installed. CI additionally parses every PowerShell tool and runs the
+manifest key self-test.
 
 ## Roadmap
 

@@ -112,3 +112,6 @@ output (matches `DATAEXTRACTION`), but less control over schema/flattening.
   `AEC_HARVEST_CHUNK_ID`, so the marker, chunk summary and chunk diagnostic are per-process
   files; the supervisor writes the combined `_batch.json` afterwards. The three-drawing
   corpus drops from 6.9 s to 2.8 s with three chunks, and the merged CSV is byte-identical.
+- The AutoCAD-free half (row model, CSV contract, status payload) is its own `net10.0`
+  project, and GitHub Actions builds and runs the checks against it. The workflow builds the
+  checks project, never the solution: the plug-in still needs AutoCAD's assemblies.

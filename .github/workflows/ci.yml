@@ -1,0 +1,65 @@
+name: ci
+
+# The plug-in itself cannot be built here: it references acdbmgd/acmgd/acmgd from an
+# AutoCAD install, which a hosted runner does not have. What *can* be built and run is the
+# AutoCAD-free half - the row model, CSV contract, status payload and batch summary - plus
+# the acceptance checks that exercise it. That is the whole point of the project split:
+# a machine without AutoCAD can still prove the logic is correct.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: acceptance checks (no AutoCAD)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # Deliberately the checks project, not the solution: building the solution would
+      # pull in the plug-in and fail on the missing AutoCAD assemblies. This reference
+      # graph proves the checks only need AEC_Batch_Data_Haravester.Core.
+      - name: Build the AutoCAD-free core and the checks
+        run: dotnet build tests/Harvest.Checks/Harvest.Checks.csproj -c Release --nologo
+
+      - name: Run the acceptance checks
+        run: .\tests\Harvest.Checks\bin\Release\net10.0\Harvest.Checks.exe
+
+      # The tools are PowerShell, so a syntax error is invisible to dotnet build and would
+      # only surface when someone runs the pipeline. Parse them all in CI instead.
+      - name: Parse every PowerShell tool
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem tools -Filter *.ps1 -File | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            foreach ($e in $parseErrors) {
+              $errors += ('{0}:{1}: {2}' -f $_.Name, $e.Extent.StartLineNumber, $e.Message)
+            }
+          }
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "::error::$_" }
+            exit 1
+          }
+          Write-Host 'All PowerShell tools parse.'
+
+      - name: Key rules self-test
+        shell: pwsh
+        run: .\tools\build-manifest.ps1 -SelfTest

@@ -18,11 +18,11 @@
 
 	<ItemGroup>
 		<!--
-      The checks project exercises the pure logic (model-space guard, status JSON, CSV
-      escaping) with no AutoCAD runtime, so those members are internal rather than public.
-      They stay internal to the shipping assembly: nothing here is part of the plug-in API.
+      The pure half (row model, CSV contract, status payload) lives in its own
+      AutoCAD-free project so it can be built and tested anywhere. InternalsVisibleTo for
+      the checks moved there with the types it exposes.
     -->
-		<InternalsVisibleTo Include="Harvest.Checks" />
+		<ProjectReference Include="..\AEC_Batch_Data_Haravester.Core\AEC_Batch_Data_Haravester.Core.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

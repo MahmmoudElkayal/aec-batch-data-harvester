@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!--
+      The AutoCAD-free half of the harvester: the row model, the CSV contract, the status
+      payload and the batch summary. Nothing here may reference an Autodesk type, which is
+      what lets the acceptance checks build and run on a machine - or a CI runner - that
+      has no AutoCAD installed.
+
+      net10.0 rather than net10.0-windows: if a Windows-only or Autodesk-only API creeps
+      into this project, the build fails here instead of shipping a latent dependency.
+    -->
+		<TargetFramework>net10.0</TargetFramework>
+		<RootNamespace>AEC_Batch_Data_Haravester</RootNamespace>
+		<AssemblyName>AEC_Batch_Data_Haravester.Core</AssemblyName>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<Version>0.5.0</Version>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- The checks live in their own process and exercise internal members. -->
+		<InternalsVisibleTo Include="Harvest.Checks" />
+	</ItemGroup>
+
+</Project>

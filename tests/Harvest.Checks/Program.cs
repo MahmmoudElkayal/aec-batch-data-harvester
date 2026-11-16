@@ -1,6 +1,5 @@
 ﻿using System.Text.Json;
 using AEC_Batch_Data_Haravester.Core;
-using AEC_Batch_Data_Haravester.Extraction;
 using AEC_Batch_Data_Haravester.Output;
 using AEC_Batch_Data_Haravester.Reporting;
 
